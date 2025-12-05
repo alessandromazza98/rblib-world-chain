@@ -1,0 +1,8 @@
+[package]
+name = "rblib-world-chain"
+version = "0.1.0"
+edition = "2024"
+authors = ["Alessandro Mazza <alessandro98.mazza@gmail.com>"]
+
+[dependencies]
+rblib = { git = "https://github.com/flashbots/rblib", tag = "v0.4.1" }
