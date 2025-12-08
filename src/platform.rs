@@ -175,13 +175,8 @@ impl Platform for WorldChain {
 		let excess_blob_gas = None;
 		let blob_gas_used = None;
 		// compute state root and trie updates
-		let hashed_state = payload
-			.block()
-			.base_state()
-			.hashed_post_state(&bundle_state);
-		let (state_root, trie_updates) = payload
-			.block()
-			.base_state()
+		let hashed_state = provider.hashed_post_state(&bundle_state);
+		let (state_root, trie_updates) = provider
 			.state_root_with_updates(hashed_state.clone())
 			.map_err(BlockExecutionError::other)?;
 		let header = Header {
