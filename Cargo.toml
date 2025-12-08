@@ -5,4 +5,12 @@ edition = "2024"
 authors = ["Alessandro Mazza <alessandro98.mazza@gmail.com>"]
 
 [dependencies]
-rblib = { git = "https://github.com/flashbots/rblib", tag = "v0.4.1" }
+world-chain-node = { path = "/Users/alessandro.mazza/work/world-chain/crates/world/node" }
+rblib = { path = "/Users/alessandro.mazza/work/rblib" }
+alloy-op-evm = { version = "0.23.0", default-features = false }
+reth-optimism-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.3" }
+reth-chain-state = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.3" }
+# rblib = { git = "https://github.com/flashbots/rblib", features = [ "optimism" ], tag = "v0.4.1" }
+serde = "1.0.228"
+tracing = "0.1.43"
+dashmap = "6.1.0"
