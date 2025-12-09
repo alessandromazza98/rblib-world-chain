@@ -1,27 +1,7 @@
 use {
 	crate::context::WorldContext,
-	alloy_op_evm::{
-		OpEvm,
-		block::{OpAlloyReceiptBuilder, receipt_builder::OpReceiptBuilder},
-	},
 	rblib::{
-		alloy::{
-			consensus::{
-				Block,
-				BlockBody,
-				EMPTY_OMMER_ROOT_HASH,
-				Eip658Value,
-				Receipt,
-				Transaction,
-				TxReceipt,
-				proofs,
-			},
-			eips::merge::BEACON_NONCE,
-			optimism::consensus::{OpDepositReceipt, OpReceiptEnvelope},
-			primitives::U256,
-		},
 		prelude::{
-			BlockExt,
 			Checkpoint,
 			CheckpointExt,
 			FlashbotsBundle,
@@ -32,22 +12,8 @@ use {
 			traits::{PlatformExecBounds, PlatformExecCtxBounds},
 			types,
 		},
-		reth::{
-			errors::BlockExecutionError,
-			evm::eth::receipt_builder::ReceiptBuilderCtx,
-			optimism::{
-				node::OpBuiltPayload,
-				primitives::{OpPrimitives, OpReceipt, OpTxType},
-			},
-			primitives::{Header, RecoveredBlock, logs_bloom},
-			provider::ExecutionOutcome,
-			providers::StateProvider,
-			revm::{DatabaseRef, interpreter::gas, state::EvmState},
-		},
-		revm::database::BundleState,
+		reth::providers::StateProvider,
 	},
-	reth_chain_state::ExecutedBlock,
-	reth_optimism_consensus::calculate_receipt_root_no_memo_optimism,
 	serde::{Deserialize, Serialize},
 	std::sync::Arc,
 	world_chain_node::{context::FlashblocksContext, node::WorldChainNode},

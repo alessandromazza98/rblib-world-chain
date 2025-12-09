@@ -2,9 +2,9 @@ use {
 	crate::{WorldChain, context::WorldContext},
 	atomic_time::AtomicOptionInstant,
 	core::sync::atomic::{AtomicU64, Ordering},
-	flashblocks_primitives::{
-		ed25519_dalek::ed25519::SignatureEncoding,
-		primitives::{ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1},
+	flashblocks_primitives::primitives::{
+		ExecutionPayloadBaseV1,
+		ExecutionPayloadFlashblockDeltaV1,
 	},
 	parking_lot::RwLock,
 	rblib::{
@@ -261,7 +261,7 @@ impl PublishFlashblock {
 						.unwrap()
 						.execution_output
 						.receipts
-						.get(0)
+						.first()
 						.unwrap()
 						.clone();
 					let total_fees = op_built_payload.fees();
@@ -276,7 +276,7 @@ impl PublishFlashblock {
 
 		let base_fee = payload.block().base_fee();
 
-		let this_block_span = self.unpublished_payload(&payload);
+		let this_block_span = self.unpublished_payload(payload);
 
 		for checkpoint in this_block_span {
 			if let Some(checkpoint_bundle_state) = checkpoint.state().cloned() {
@@ -345,11 +345,8 @@ impl PublishFlashblock {
 		let txs: Vec<Recovered<OpTxEnvelope>> =
 			payload.history().transactions().cloned().collect();
 		let transactions_root = proofs::calculate_transaction_root(&txs);
-		let receipts_root = calculate_receipt_root_no_memo_optimism(
-			&receipts,
-			&chain_spec,
-			timestamp,
-		);
+		let receipts_root =
+			calculate_receipt_root_no_memo_optimism(&receipts, chain_spec, timestamp);
 		let logs_bloom = logs_bloom(receipts.iter().flat_map(|r| r.logs()));
 		let requests_hash = None;
 		let withdrawals_root = None;
