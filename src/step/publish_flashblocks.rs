@@ -234,7 +234,7 @@ impl PublishFlashblock {
 			mut receipts,
 			mut total_fees,
 			mut cumulative_gas_used,
-		) = match payload.last_barrier() {
+		) = match payload.latest_barrier() {
 			Some(payload) => {
 				if let Some(op_built_payload) = &payload.context().maybe_built_ctx {
 					// safe unwraps because we always build payloads with the execution
