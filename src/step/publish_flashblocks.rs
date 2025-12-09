@@ -573,11 +573,9 @@ impl Times {
 
 		// capture the duration between consecutive flashblocks from the same
 		// payload job.
-		if !is_first_block {
-			if let Some(prev_at) = prev_at {
-				let duration = now.duration_since(prev_at);
-				metrics.intra_block_interval.record(duration);
-			}
+		if !is_first_block && let Some(prev_at) = prev_at {
+			let duration = now.duration_since(prev_at);
+			metrics.intra_block_interval.record(duration);
 		}
 	}
 }
