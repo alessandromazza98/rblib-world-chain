@@ -2,9 +2,9 @@ use {
 	crate::{WorldChain, context::WorldContext},
 	atomic_time::AtomicOptionInstant,
 	core::sync::atomic::{AtomicU64, Ordering},
-	flashblocks_primitives::primitives::{
-		ExecutionPayloadBaseV1,
-		ExecutionPayloadFlashblockDeltaV1,
+	flashblocks_primitives::{
+		ed25519_dalek::ed25519::SignatureEncoding,
+		primitives::{ExecutionPayloadBaseV1, ExecutionPayloadFlashblockDeltaV1},
 	},
 	parking_lot::RwLock,
 	rblib::{
@@ -21,7 +21,7 @@ use {
 				proofs,
 			},
 			eips::{Encodable2718, merge::BEACON_NONCE},
-			optimism::consensus::OpDepositReceipt,
+			optimism::consensus::{OpDepositReceipt, OpTxEnvelope},
 			primitives::{B256, U256},
 		},
 		prelude::{
@@ -46,8 +46,8 @@ use {
 				node::OpBuiltPayload,
 				primitives::{OpPrimitives, OpReceipt, OpTxType},
 			},
-			payload::PayloadBuilderAttributes,
-			primitives::{Header, RecoveredBlock, logs_bloom},
+			payload::{BuiltPayload, PayloadBuilderAttributes},
+			primitives::{Header, Recovered, RecoveredBlock, logs_bloom},
 			provider::ExecutionOutcome,
 			revm::DatabaseRef,
 		},
@@ -229,13 +229,56 @@ impl PublishFlashblock {
 		payload: &Checkpoint<WorldChain>,
 		ctx: &StepContext<WorldChain>,
 	) -> Result<OpBuiltPayload, BlockExecutionError> {
-		let base_fee = payload.block().base_fee();
-		let mut total_fees = 0;
-		let mut receipts: Vec<OpReceipt> = vec![];
-		let mut cumulative_gas_used = 0;
-		let mut bundle_state = BundleState::default();
+		let (
+			mut bundle_state,
+			mut receipts,
+			mut total_fees,
+			mut cumulative_gas_used,
+		) = match payload.last_barrier() {
+			Some(payload) => {
+				if let Some(op_built_payload) = &payload.context().maybe_built_ctx {
+					// safe unwraps because we always build payloads with the execution
+					// outcome
+					let bundle_state = op_built_payload
+						.executed_block()
+						.unwrap()
+						.execution_output
+						.bundle
+						.clone();
+					// we alwyas build a op built payload with just one block, so
+					// we can just take the first index
+					debug_assert_eq!(
+						op_built_payload
+							.executed_block()
+							.unwrap()
+							.execution_outcome()
+							.receipts
+							.len(),
+						1
+					);
+					let receipts = op_built_payload
+						.executed_block()
+						.unwrap()
+						.execution_output
+						.receipts
+						.get(0)
+						.unwrap()
+						.clone();
+					let total_fees = op_built_payload.fees();
+					let cumulative_gas_used = op_built_payload.block().gas_used();
+					(bundle_state, receipts, total_fees, cumulative_gas_used)
+				} else {
+					(BundleState::default(), vec![], U256::ZERO, 0)
+				}
+			}
+			None => (BundleState::default(), vec![], U256::ZERO, 0),
+		};
 
-		for checkpoint in payload.history().iter() {
+		let base_fee = payload.block().base_fee();
+
+		let this_block_span = self.unpublished_payload(&payload);
+
+		for checkpoint in this_block_span {
 			if let Some(checkpoint_bundle_state) = checkpoint.state().cloned() {
 				bundle_state.extend(checkpoint_bundle_state);
 
@@ -245,11 +288,10 @@ impl PublishFlashblock {
 						checkpoint.result().map(|res| res.results()[i].clone())
 					{
 						let gas_used = result.gas_used();
-
 						let miner_fee = tx
 							.effective_tip_per_gas(base_fee)
 							.expect("fee is always valid; execution succeeded");
-						total_fees += miner_fee * gas_used as u128;
+						total_fees += U256::from(miner_fee) * U256::from(gas_used);
 						cumulative_gas_used += gas_used;
 
 						let receipt = match tx.tx_type() {
@@ -300,7 +342,8 @@ impl PublishFlashblock {
 
 		let timestamp = payload.block().timestamp();
 		let chain_spec = payload.block().chainspec();
-		let txs = payload.transactions();
+		let txs: Vec<Recovered<OpTxEnvelope>> =
+			payload.history().transactions().cloned().collect();
 		let transactions_root = proofs::calculate_transaction_root(&txs);
 		let receipts_root = calculate_receipt_root_no_memo_optimism(
 			&receipts,
