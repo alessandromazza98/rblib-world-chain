@@ -43,6 +43,7 @@ use {
 		reth::{
 			errors::BlockExecutionError,
 			optimism::{
+				forks::OpHardforks,
 				node::OpBuiltPayload,
 				primitives::{OpPrimitives, OpReceipt, OpTxType},
 			},
@@ -229,6 +230,8 @@ impl PublishFlashblock {
 		payload: &Checkpoint<WorldChain>,
 		ctx: &StepContext<WorldChain>,
 	) -> Result<OpBuiltPayload, BlockExecutionError> {
+		let chain_spec = payload.block().chainspec();
+		let timestamp = payload.block().timestamp();
 		let (
 			mut bundle_state,
 			mut receipts,
@@ -312,8 +315,9 @@ impl PublishFlashblock {
 									// indicate an update to how receipt hashes should be
 									// computed when set. The state transition process ensures
 									// this is only set for post-Canyon deposit transactions.
-									// TODO: fix this to account for canyon hardfork
-									deposit_receipt_version: Some(1),
+									deposit_receipt_version: chain_spec
+										.is_canyon_active_at_timestamp(timestamp)
+										.then_some(1),
 								};
 								OpReceipt::Deposit(inner)
 							}
@@ -340,7 +344,6 @@ impl PublishFlashblock {
 			}
 		}
 
-		let timestamp = payload.block().timestamp();
 		let chain_spec = payload.block().chainspec();
 		let txs: Vec<Recovered<OpTxEnvelope>> =
 			payload.history().transactions().cloned().collect();
