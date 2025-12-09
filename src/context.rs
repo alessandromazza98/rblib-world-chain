@@ -5,12 +5,12 @@ use rblib::{
 
 #[derive(Debug, Default, Clone)]
 pub struct WorldContext {
-	pub maybe_built_ctx: Option<OpBuiltPayload>,
+	pub maybe_built_payload: Option<OpBuiltPayload>,
 }
 
 impl PartialEq for WorldContext {
 	fn eq(&self, other: &Self) -> bool {
-		match (&self.maybe_built_ctx, &other.maybe_built_ctx) {
+		match (&self.maybe_built_payload, &other.maybe_built_payload) {
 			(None, Some(_)) => false,
 			(Some(_), None) => false,
 			(None, None) => true,
@@ -27,7 +27,7 @@ impl WorldContext {
 	/// Create a `WorldContext` with the provided op built payload.
 	pub fn new(op_built_payload: OpBuiltPayload) -> Self {
 		Self {
-			maybe_built_ctx: Some(op_built_payload),
+			maybe_built_payload: Some(op_built_payload),
 		}
 	}
 }

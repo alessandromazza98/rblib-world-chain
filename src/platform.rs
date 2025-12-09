@@ -79,7 +79,7 @@ impl Platform for WorldChain {
 		if let Some(latest_barrier) = payload.latest_barrier() {
 			// clone is cheap because it's mostly Arc
 			if let Some(built_payload) =
-				latest_barrier.context().maybe_built_ctx.clone()
+				latest_barrier.context().maybe_built_payload.clone()
 			{
 				return Ok(built_payload);
 			}

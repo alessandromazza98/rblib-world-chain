@@ -241,7 +241,7 @@ impl PublishFlashblock {
 			mut cumulative_gas_used,
 		) = match payload.latest_barrier() {
 			Some(payload) => {
-				if let Some(op_built_payload) = &payload.context().maybe_built_ctx {
+				if let Some(op_built_payload) = &payload.context().maybe_built_payload {
 					// safe unwraps because we always build payloads with the execution
 					// outcome
 					let bundle_state = op_built_payload
