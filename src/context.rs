@@ -5,6 +5,7 @@ use rblib::{
 
 #[derive(Debug, Default, Clone)]
 pub struct WorldContext {
+	/// The optional op built payload related to a specific checkpoint.
 	pub maybe_built_payload: Option<OpBuiltPayload>,
 }
 
