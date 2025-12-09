@@ -32,7 +32,7 @@ fn main() -> Result<(), std::io::Error> {
 						OrderByPriorityFee::default(),
 						BreakAfterDeadline,
 					)
-						.with_epilogue(PublishFlashblock::default())
+						.with_epilogue(PublishFlashblock::to())
 						.with_limits(FlashblockLimits::with_interval(interval)),
 				)
 				.with_step(BreakAfterDeadline)
