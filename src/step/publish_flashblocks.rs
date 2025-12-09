@@ -521,7 +521,7 @@ impl Times {
 		self.job_started.store(Some(now), Ordering::Relaxed);
 
 		if let Some(ended_at) = self.job_ended.swap(None, Ordering::Relaxed) {
-			let duration = ended_at.duration_since(now);
+			let duration = now.duration_since(ended_at);
 			metrics.inter_jobs_interval.record(duration);
 		}
 	}
@@ -544,11 +544,12 @@ impl Times {
 		let now = Instant::now();
 		let last_block_at = self.last_block_at.load(Ordering::Relaxed);
 
-		if self
+		let is_first_block = self
 			.first_block_at
 			.compare_exchange(None, Some(now), Ordering::Relaxed, Ordering::Relaxed)
-			.is_ok()
-		{
+			.is_ok();
+
+		if is_first_block {
 			// this is the first block, capture inter-block interval
 			if let Some(last_block_at) = last_block_at {
 				let duration = now.duration_since(last_block_at);
@@ -569,9 +570,11 @@ impl Times {
 
 		// capture the duration between consecutive flashblocks from the same
 		// payload job.
-		if let (Some(last_block_at), Some(prev_at)) = (last_block_at, prev_at) {
-			let duration = last_block_at.duration_since(prev_at);
-			metrics.intra_block_interval.record(duration);
+		if !is_first_block {
+			if let Some(prev_at) = prev_at {
+				let duration = now.duration_since(prev_at);
+				metrics.intra_block_interval.record(duration);
+			}
 		}
 	}
 }
