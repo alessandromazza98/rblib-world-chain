@@ -113,6 +113,8 @@ impl Step<WorldChain> for PublishFlashblock {
 			.map(|tx| tx.encoded_2718().into())
 			.collect();
 
+		// Q: do we want to skip empty flashblocks? Or do we want to stream them
+		// nevertheless?
 		if transactions.is_empty() {
 			// nothing to publish, empty flashblocks are not interesting, skip.
 			return ControlFlow::Ok(payload);
