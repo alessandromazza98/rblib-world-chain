@@ -13,7 +13,8 @@ use {
 			StepContext,
 		},
 		reth::{
-			optimism::node::OpBuiltPayload,
+			optimism::{node::OpBuiltPayload, primitives::OpReceipt},
+			payload::primitives::BuiltPayload,
 			primitives::{Block, RecoveredBlock},
 		},
 	},

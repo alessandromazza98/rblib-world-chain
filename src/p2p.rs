@@ -1,4 +1,2 @@
 #[derive(Debug)]
-pub struct FlashblocksP2p {
-    
-}
+pub struct FlashblocksP2p {}

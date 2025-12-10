@@ -3,14 +3,9 @@ use {
 	rblib::{
 		pool::{AppendOrders, OrderPool},
 		prelude::{Behavior::Loop, Minus, Pipeline, PipelineBuilderExt, Scaled},
-		steps::{BreakAfterDeadline, OrderByPriorityFee},
+		steps::{BreakAfterDeadline, OptimismPrologue},
 	},
-	rblib_world_chain::{
-		FlashblockLimits,
-		OptimismPrologue,
-		PublishFlashblock,
-		WorldChain,
-	},
+	rblib_world_chain::{FlashblockLimits, PublishFlashblock, WorldChain},
 };
 
 fn main() -> Result<(), std::io::Error> {
