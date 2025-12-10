@@ -8,5 +8,9 @@ mod step;
 pub use {
 	limits::FlashblockLimits,
 	platform::WorldChain,
-	step::{pre_state::FetchPreState, publish_flashblocks::PublishFlashblock},
+	step::{
+		optimism_prologue::OptimismPrologue,
+		pre_state::FetchPreState,
+		publish_flashblocks::PublishFlashblock,
+	},
 };

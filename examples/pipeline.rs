@@ -3,9 +3,14 @@ use {
 	rblib::{
 		pool::{AppendOrders, OrderPool},
 		prelude::{Behavior::Loop, Minus, Pipeline, PipelineBuilderExt, Scaled},
-		steps::{BreakAfterDeadline, OptimismPrologue, OrderByPriorityFee},
+		steps::{BreakAfterDeadline, OrderByPriorityFee},
 	},
-	rblib_world_chain::{FlashblockLimits, PublishFlashblock, WorldChain},
+	rblib_world_chain::{
+		FlashblockLimits,
+		OptimismPrologue,
+		PublishFlashblock,
+		WorldChain,
+	},
 };
 
 fn main() -> Result<(), std::io::Error> {
@@ -27,11 +32,7 @@ fn main() -> Result<(), std::io::Error> {
 			Pipeline::default()
 				.with_pipeline(
 					Loop, // inner loop, individual flashblocks
-					(
-						AppendOrders::from_pool(&pool),
-						OrderByPriorityFee::default(),
-						BreakAfterDeadline,
-					)
+					(AppendOrders::from_pool(&pool), BreakAfterDeadline)
 						.with_epilogue(PublishFlashblock::to())
 						.with_limits(FlashblockLimits::with_interval(interval)),
 				)
