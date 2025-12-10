@@ -1,10 +1,15 @@
 use {
-	crate::{WorldChain, context::WorldContext},
+	crate::{WorldChain, context::WorldContext, p2p::FlashblocksP2p},
 	atomic_time::AtomicOptionInstant,
+	chrono::Utc,
 	core::sync::atomic::{AtomicU64, Ordering},
-	flashblocks_primitives::primitives::{
-		ExecutionPayloadBaseV1,
-		ExecutionPayloadFlashblockDeltaV1,
+	flashblocks_primitives::{
+		flashblocks::{Flashblock, FlashblockMetadata},
+		primitives::{
+			ExecutionPayloadBaseV1,
+			ExecutionPayloadFlashblockDeltaV1,
+			FlashblocksPayloadV1,
+		},
 	},
 	parking_lot::RwLock,
 	rblib::{
@@ -69,6 +74,9 @@ use {
 /// After publishing a flashblock it will place a new barrier in the payload
 /// marking all checkpoints so far as immutable.
 pub struct PublishFlashblock {
+	/// p2p communication layer for flashblocks.
+	p2p: FlashblocksP2p,
+
 	/// Keeps track of the current flashblock number within the payload job.
 	block_number: AtomicU64,
 
@@ -88,6 +96,7 @@ pub struct PublishFlashblock {
 impl PublishFlashblock {
 	pub fn to() -> Self {
 		Self {
+			p2p: FlashblocksP2p {},
 			block_number: AtomicU64::default(),
 			block_base: RwLock::new(None),
 			metrics: Metrics::default(),
@@ -121,11 +130,11 @@ impl Step<WorldChain> for PublishFlashblock {
 		}
 
 		// increment flashblock number
-		let _index = self.block_number.fetch_add(1, Ordering::SeqCst);
+		let index = self.block_number.fetch_add(1, Ordering::SeqCst);
 
-		let _base = self.block_base.read().clone();
+		let base = self.block_base.read().clone();
 		let block = op_built_payload.block();
-		let _diff = ExecutionPayloadFlashblockDeltaV1 {
+		let diff = ExecutionPayloadFlashblockDeltaV1 {
 			state_root: block.state_root(),
 			receipts_root: block.receipts_root(),
 			logs_bloom: block.logs_bloom(),
@@ -134,6 +143,23 @@ impl Step<WorldChain> for PublishFlashblock {
 			transactions,
 			withdrawals: vec![],
 			withdrawals_root: block.withdrawals_root().unwrap_or_default(),
+		};
+		let fees = op_built_payload.fees();
+		let now = Utc::now()
+			.timestamp_nanos_opt()
+			.expect("time went backwards");
+		let metadata = FlashblockMetadata {
+			fees,
+			flashblock_timestamp: Some(now),
+		};
+		let flashblock = Flashblock {
+			flashblock: FlashblocksPayloadV1 {
+				payload_id: ctx.block().payload_id(),
+				index,
+				diff,
+				metadata,
+				base,
+			},
 		};
 
 		// TODO: uncomment this and add the p2p layer
