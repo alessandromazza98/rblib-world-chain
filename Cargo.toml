@@ -7,6 +7,7 @@ authors = ["Alessandro Mazza <alessandro98.mazza@gmail.com>"]
 [dependencies]
 world-chain-node = { path = "/Users/alessandro.mazza/work/world-chain/crates/world/node" }
 flashblocks-primitives = { path = "/Users/alessandro.mazza/work/world-chain/crates/flashblocks/primitives" }
+flashblocks-builder = { path = "/Users/alessandro.mazza/work/world-chain/crates/flashblocks/builder" }
 rblib = { path = "/Users/alessandro.mazza/work/rblib" }
 alloy-op-evm = { version = "0.23.0", default-features = false }
 reth-optimism-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.3" }
@@ -18,3 +19,5 @@ dashmap = "6.1.0"
 parking_lot = "0.12.5"
 atomic-time = "0.1.5"
 chrono = "0.4.42"
+thiserror = "2.0.17"
+eyre = "0.6.12"
