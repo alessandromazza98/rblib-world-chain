@@ -10,6 +10,10 @@ pub struct FlashblocksP2p {
 }
 
 impl FlashblocksP2p {
+	pub fn new(flashblocks_state: FlashblocksStateExecutor) -> Self {
+		Self { flashblocks_state }
+	}
+
 	pub fn publish(
 		&self,
 		payload: FlashblocksPayloadV1,

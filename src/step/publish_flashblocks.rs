@@ -1,5 +1,10 @@
 use {
-	crate::{WorldChain, context::WorldContext, p2p::FlashblocksP2p},
+	crate::{
+		WorldChain,
+		context::WorldContext,
+		flashblocks::FlashblocksStateExecutor,
+		p2p::FlashblocksP2p,
+	},
 	atomic_time::AtomicOptionInstant,
 	chrono::Utc,
 	core::sync::atomic::{AtomicU64, Ordering},
@@ -94,9 +99,9 @@ pub struct PublishFlashblock {
 }
 
 impl PublishFlashblock {
-	pub fn to() -> Self {
+	pub fn new(flashblocks_state: FlashblocksStateExecutor) -> Self {
 		Self {
-			p2p: todo!(),
+			p2p: FlashblocksP2p::new(flashblocks_state),
 			block_number: AtomicU64::default(),
 			block_base: RwLock::new(None),
 			metrics: Metrics::default(),

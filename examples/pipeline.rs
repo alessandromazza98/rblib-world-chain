@@ -28,7 +28,8 @@ fn main() -> Result<(), std::io::Error> {
 				.with_pipeline(
 					Loop, // inner loop, individual flashblocks
 					(AppendOrders::from_pool(&pool), BreakAfterDeadline)
-						.with_epilogue(PublishFlashblock::to())
+						// TODO: add the PublishFlashblocks epilogue
+						//.with_epilogue(PublishFlashblock)
 						.with_limits(FlashblockLimits::with_interval(interval)),
 				)
 				.with_step(BreakAfterDeadline)
