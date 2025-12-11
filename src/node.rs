@@ -7,13 +7,19 @@ use {
 		api::{FullNodeTypes, NodeTypes},
 		builder::{
 			Node,
+			NodeAdapter,
+			NodeComponentsBuilder,
 			components::{BasicPayloadServiceBuilder, ComponentsBuilder},
+			rpc::BasicEngineValidatorBuilder,
 		},
 		optimism::{
 			chainspec::OpChainSpec,
 			node::{
+				OpAddOns,
 				OpConsensusBuilder,
+				OpEngineApiBuilder,
 				OpEngineTypes,
+				OpEngineValidatorBuilder,
 				OpExecutorBuilder,
 				OpNetworkBuilder,
 				OpPoolBuilder,
@@ -21,6 +27,7 @@ use {
 				node::OpPayloadBuilder,
 			},
 			primitives::OpPrimitives,
+			rpc::OpEthApiBuilder,
 		},
 	},
 };
@@ -34,7 +41,17 @@ impl<N> Node<N> for FlashblocksNode
 where
 	N: FullNodeTypes<Types = Self>,
 {
-	type AddOns;
+	type AddOns = OpAddOns<
+		NodeAdapter<
+			N,
+			<Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components,
+		>,
+		// TODO: change the op eth api builder with `FlashblocksEthApiBuilder`
+		OpEthApiBuilder,
+		OpEngineValidatorBuilder,
+		OpEngineApiBuilder<OpEngineValidatorBuilder>,
+		BasicEngineValidatorBuilder<OpEngineValidatorBuilder>,
+	>;
 	type ComponentsBuilder = ComponentsBuilder<
 		N,
 		// TODO: change the pool builder to account for pbh stuff
