@@ -19,6 +19,7 @@ use {
 			eips::{Decodable2718, Encodable2718, eip4895, merge::BEACON_NONCE},
 			optimism::consensus::OpTxEnvelope,
 			primitives::{Address, B64, B256, Bloom, Bytes, FixedBytes, U256},
+			serde::quantity,
 		},
 		reth::{
 			api::{Block as BlockApi, BlockBody as BlockBodyApi, NodePrimitives},
@@ -58,7 +59,7 @@ pub struct ExecutionPayloadFlashblockDeltaV1 {
 	/// The logs bloom of the block.
 	pub logs_bloom: Bloom,
 	/// The gas used of the block.
-	#[serde(with = "alloy_serde::quantity")]
+	#[serde(with = "quantity")]
 	pub gas_used: u64,
 	/// The block hash of the block.
 	pub block_hash: B256,
@@ -95,13 +96,13 @@ pub struct ExecutionPayloadBaseV1 {
 	/// The previous randao of the block.
 	pub prev_randao: B256,
 	/// The block number.
-	#[serde(with = "alloy_serde::quantity")]
+	#[serde(with = "quantity")]
 	pub block_number: u64,
 	/// The gas limit of the block.
-	#[serde(with = "alloy_serde::quantity")]
+	#[serde(with = "quantity")]
 	pub gas_limit: u64,
 	/// The timestamp of the block.
-	#[serde(with = "alloy_serde::quantity")]
+	#[serde(with = "quantity")]
 	pub timestamp: u64,
 	/// The extra data of the block.
 	pub extra_data: Bytes,

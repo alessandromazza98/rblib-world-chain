@@ -15,7 +15,6 @@ rblib = { path = "/Users/alessandro.mazza/work/rblib" }
 # alloy
 alloy-op-evm = { version = "0.23.0", default-features = false }
 alloy-rlp = { version = "0.3.12", default-features = false }
-alloy-serde = { version = "1.1.2", default-features = false }
 
 # reth
 reth-optimism-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.3" }
