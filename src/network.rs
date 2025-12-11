@@ -27,13 +27,6 @@ impl<T> FlashblocksNetworkBuilder<T> {
 			flashblocks_p2p_handle,
 		}
 	}
-
-	pub fn disabled(inner: T) -> Self {
-		Self {
-			inner,
-			flashblocks_p2p_handle: None,
-		}
-	}
 }
 
 impl<T, Network, Node, Pool> NetworkBuilder<Node, Pool>

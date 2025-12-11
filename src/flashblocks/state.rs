@@ -107,4 +107,9 @@ impl FlashblocksStateExecutor {
 	) -> tokio::sync::watch::Receiver<Option<ExecutedBlock<OpPrimitives>>> {
 		self.pending_block.subscribe()
 	}
+
+	/// Returns the associated `FlashblocksHandle`.
+	pub fn p2p_handle(&self) -> FlashblocksHandle {
+		self.p2p_handle.clone()
+	}
 }

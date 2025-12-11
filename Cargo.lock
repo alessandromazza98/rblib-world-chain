@@ -7286,6 +7286,7 @@ dependencies = [
  "alloy-rlp",
  "atomic-time",
  "chrono",
+ "clap",
  "dashmap 6.1.0",
  "eyre",
  "futures",

@@ -1,5 +1,6 @@
 use {
 	crate::{
+		config::{WorldChainArgs, WorldChainNodeConfig},
 		flashblocks::state::FlashblocksStateExecutor,
 		network::FlashblocksNetworkBuilder,
 	},
@@ -24,6 +25,7 @@ use {
 				OpNetworkBuilder,
 				OpPoolBuilder,
 				OpStorage,
+				args::RollupArgs,
 				node::OpPayloadBuilder,
 			},
 			primitives::OpPrimitives,
@@ -32,8 +34,9 @@ use {
 	},
 };
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FlashblocksNode {
+	config: WorldChainNodeConfig,
 	flashblocks_state: Option<FlashblocksStateExecutor>,
 }
 
@@ -64,7 +67,40 @@ where
 	>;
 
 	fn components_builder(&self) -> Self::ComponentsBuilder {
-		todo!()
+		let Self {
+			config:
+				WorldChainNodeConfig {
+					args:
+						WorldChainArgs {
+							rollup,
+							tx_peers: _,
+							flashblocks: _,
+						},
+				},
+			flashblocks_state,
+		} = self.clone();
+		let RollupArgs {
+			disable_txpool_gossip,
+			compute_pending_block,
+			discovery_v4,
+			..
+		} = rollup;
+		let inner = OpNetworkBuilder::new(disable_txpool_gossip, !discovery_v4);
+		let fb_network_builder = FlashblocksNetworkBuilder::new(
+			inner,
+			flashblocks_state
+				.as_ref()
+				.map(|flashhblocks_state| flashhblocks_state.p2p_handle()),
+		);
+		ComponentsBuilder::default()
+			.node_types::<N>()
+			.pool(OpPoolBuilder::default())
+			.executor(OpExecutorBuilder::default())
+			.payload(BasicPayloadServiceBuilder::new(OpPayloadBuilder::new(
+				compute_pending_block,
+			)))
+			.network(fb_network_builder)
+			.consensus(OpConsensusBuilder::default())
 	}
 
 	fn add_ons(&self) -> Self::AddOns {

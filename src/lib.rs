@@ -1,10 +1,11 @@
+mod config;
 mod context;
 mod flashblocks;
 mod limits;
+mod network;
+mod node;
 mod platform;
 mod step;
-mod node;
-mod network;
 
 // re-exports
 pub use {
