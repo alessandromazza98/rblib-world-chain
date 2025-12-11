@@ -30,7 +30,6 @@ thiserror = "2.0.17"
 eyre = "0.6.12"
 tokio = "1.48.0"
 serde_json = "1.0.145"
-# ed25519-dalek = "2.2.0"
 
 [dev-dependencies]
 rblib = { path = "/Users/alessandro.mazza/work/rblib", features = ["test-utils" ] }
