@@ -13,7 +13,6 @@ rblib = { path = "/Users/alessandro.mazza/work/rblib" }
 # rblib = { git = "https://github.com/flashbots/rblib", features = [ "optimism" ], tag = "v0.4.1" }
 
 # alloy
-alloy-op-evm = { version = "0.23.0", default-features = false }
 alloy-rlp = { version = "0.3.12", default-features = false }
 
 # reth
