@@ -2,6 +2,7 @@ mod context;
 mod limits;
 mod p2p;
 mod platform;
+mod flashblocks;
 mod step;
 
 // re-exports

@@ -7284,11 +7284,14 @@ name = "rblib-world-chain"
 version = "0.1.0"
 dependencies = [
  "alloy-op-evm",
+ "alloy-rlp",
  "atomic-time",
  "chrono",
  "dashmap 6.1.0",
+ "ed25519-dalek",
  "eyre",
  "flashblocks-builder",
+ "flashblocks-p2p",
  "flashblocks-primitives",
  "parking_lot",
  "rblib",
