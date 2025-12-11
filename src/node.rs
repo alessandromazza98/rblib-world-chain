@@ -13,6 +13,7 @@ use {
 			components::{BasicPayloadServiceBuilder, ComponentsBuilder},
 			rpc::BasicEngineValidatorBuilder,
 		},
+		core::rpc::compat::RpcTypes,
 		optimism::{
 			chainspec::OpChainSpec,
 			node::{
@@ -62,6 +63,24 @@ impl FlashblocksNode {
 	/// Returns the flashblocks state.
 	pub fn flashblocks_state(&self) -> Option<FlashblocksStateExecutor> {
 		self.flashblocks_state.clone()
+	}
+
+	/// Returns an [`OpAddOnsBuilder`] with configured arguments.
+	///
+	/// Use this method instead of [`Node::add_ons`] when you need to modify
+	/// the components (e.g., via `attach_pool`) since the builder creates
+	/// add-ons that are decoupled from the original `ComponentsBuilder` type.
+	pub fn add_ons_builder<NetworkT: RpcTypes>(
+		&self,
+	) -> OpAddOnsBuilder<NetworkT> {
+		OpAddOnsBuilder::default()
+			.with_sequencer(self.config.args.rollup.sequencer.clone())
+			.with_sequencer_headers(self.config.args.rollup.sequencer_headers.clone())
+			.with_enable_tx_conditional(self.config.args.rollup.enable_tx_conditional)
+			.with_min_suggested_priority_fee(
+				self.config.args.rollup.min_suggested_priority_fee,
+			)
+			.with_historical_rpc(self.config.args.rollup.historical_rpc.clone())
 	}
 }
 
@@ -129,15 +148,7 @@ where
 	}
 
 	fn add_ons(&self) -> Self::AddOns {
-		OpAddOnsBuilder::default()
-			.with_sequencer(self.config.args.rollup.sequencer.clone())
-			.with_sequencer_headers(self.config.args.rollup.sequencer_headers.clone())
-			.with_enable_tx_conditional(self.config.args.rollup.enable_tx_conditional)
-			.with_min_suggested_priority_fee(
-				self.config.args.rollup.min_suggested_priority_fee,
-			)
-			.with_historical_rpc(self.config.args.rollup.historical_rpc.clone())
-			.build()
+		self.add_ons_builder().build()
 	}
 }
 

@@ -3,10 +3,21 @@ use {
 	core::time::Duration,
 	rblib::{
 		pool::{AppendOrders, HostNodeInstaller, OrderPool},
-		prelude::{Behavior::Loop, Minus, Pipeline, PipelineBuilderExt, Scaled},
+		prelude::{
+			Behavior::Loop,
+			Minus,
+			Pipeline,
+			PipelineBuilderExt,
+			Scaled,
+			types,
+		},
 		reth::{
 			builder::Node,
-			optimism::cli::{Cli, chainspec::OpChainSpecParser},
+			optimism::{
+				cli::{Cli, chainspec::OpChainSpecParser},
+				node::{OpAddOns, OpEngineApiBuilder, OpEngineValidatorBuilder},
+				rpc::OpEthApiBuilder,
+			},
 		},
 		steps::{BreakAfterDeadline, OptimismPrologue},
 	},
@@ -34,6 +45,16 @@ fn main() {
 			// Create the node
 			let config = args.into_config()?;
 			let node = FlashblocksNode::new(config.clone());
+			// Create add ons using the builder so the type is decoupled from
+			// the original ComponentsBuilder (which changes after attach_pool).
+			let add_ons: OpAddOns<
+				_,
+				OpEthApiBuilder,
+				OpEngineValidatorBuilder,
+				OpEngineApiBuilder<OpEngineValidatorBuilder>,
+			> = node
+				.add_ons_builder::<types::RpcTypes<WorldChain>>()
+				.build();
 			// Build the flashblocks pipeline.
 			let publish_flashlock =
 				PublishFlashblock::new(node.flashblocks_state().unwrap());
@@ -59,7 +80,7 @@ fn main() {
 						.attach_pool(&pool)
 						.payload(pipeline.into_service()),
 				)
-				.with_add_ons(node.add_ons())
+				.with_add_ons(add_ons)
 				.launch()
 				.await?;
 			handle.wait_for_node_exit().await
