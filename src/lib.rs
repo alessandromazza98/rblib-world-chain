@@ -3,6 +3,8 @@ mod flashblocks;
 mod limits;
 mod platform;
 mod step;
+mod node;
+mod network;
 
 // re-exports
 pub use {

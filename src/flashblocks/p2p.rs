@@ -1,29 +1,49 @@
 use {
 	crate::flashblocks::{
+		connection::FlashblocksConnection,
 		primitives::FlashblocksPayloadV1,
 		state::FlashblocksStateExecutor,
 	},
 	alloy_rlp::{BytesMut, Decodable, Encodable, Header},
 	chrono::Utc,
+	core::{fmt, net::SocketAddr},
 	parking_lot::Mutex,
-	rblib::reth::{optimism::node::OpBuiltPayload, payload::PayloadId},
+	rblib::reth::{
+		eth_wire_types::Capability,
+		ethereum::network::{
+			api::PeerId,
+			eth_wire::{
+				capability::SharedCapabilities,
+				multiplex::ProtocolConnection,
+				protocol::Protocol,
+			},
+		},
+		network::{
+			Direction,
+			Peers,
+			protocol::{ConnectionHandler, OnNotSupported, ProtocolHandler},
+		},
+		optimism::node::OpBuiltPayload,
+		payload::PayloadId,
+	},
 	serde::{Deserialize, Serialize},
 	std::sync::Arc,
 	tokio::sync::broadcast,
+	tokio_stream::wrappers::BroadcastStream,
 };
 
 /// Maximum frame size for rlpx messages.
-const MAX_FRAME: usize = 1 << 24; // 16 MiB
+pub(crate) const MAX_FRAME: usize = 1 << 24; // 16 MiB
 
 /// Maximum index for flashblocks payloads.
 /// Not intended to ever be hit. Since we resize the flashblocks vector
 /// dynamically, this is just a sanity check to prevent excessive memory usage.
-const MAX_FLASHBLOCK_INDEX: usize = 100;
+pub(crate) const MAX_FLASHBLOCK_INDEX: usize = 100;
 
 /// The maximum number of broadcast channel messages we will buffer
 /// before dropping them. In practice, we should rarely need to buffer any
 /// messages.
-const BROADCAST_BUFFER_CAPACITY: usize = 100;
+pub(crate) const BROADCAST_BUFFER_CAPACITY: usize = 100;
 
 #[derive(Debug)]
 pub struct FlashblocksP2p {
@@ -301,5 +321,113 @@ impl FlashblocksP2PCtx {
 				state.flashblock_index += 1;
 			}
 		}
+	}
+}
+
+/// Main protocol handler for the flashblocks P2P protocol.
+///
+/// This handler manages incoming and outgoing connections, coordinates
+/// flashblock publishing, and maintains the protocol state across all peer
+/// connections. It implements the core logic for multi-builder coordination and
+/// failover scenarios in HA sequencer setups.
+#[derive(Clone, Debug)]
+pub struct FlashblocksP2PProtocol<N> {
+	/// Network handle used to update peer reputation and manage connections.
+	pub network: N,
+	/// Shared context containing network handle, keys, and communication
+	/// channels.
+	pub handle: FlashblocksHandle,
+}
+
+impl<N> FlashblocksP2PProtocol<N> {
+	/// Creates a new flashblocks P2P protocol handler.
+	///
+	/// Initializes the handler with the necessary cryptographic keys, network
+	/// handle, and communication channels. The handler starts in a
+	/// non-publishing state.
+	///
+	/// # Arguments
+	/// * `network` - Network handle for peer management and reputation updates
+	/// * `handle` - Shared handle containing the protocol context and mutable
+	///   state
+	pub fn new(network: N, handle: FlashblocksHandle) -> Self {
+		Self { network, handle }
+	}
+}
+
+impl<N> FlashblocksP2PProtocol<N> {
+	/// Returns the P2P capability for the flashblocks v1 protocol.
+	///
+	/// This capability is used during devp2p handshake to advertise support
+	/// for the flashblocks protocol with protocol name "flblk" and version 1.
+	pub fn capability() -> Capability {
+		Capability::new_static("flblk", 1)
+	}
+}
+
+impl<N: Peers + Unpin + fmt::Debug + Clone + Send + Sync + 'static>
+	ProtocolHandler for FlashblocksP2PProtocol<N>
+{
+	type ConnectionHandler = Self;
+
+	fn on_incoming(
+		&self,
+		_socket_addr: SocketAddr,
+	) -> Option<Self::ConnectionHandler> {
+		Some(self.clone())
+	}
+
+	fn on_outgoing(
+		&self,
+		_socket_addr: SocketAddr,
+		_peer_id: PeerId,
+	) -> Option<Self::ConnectionHandler> {
+		Some(self.clone())
+	}
+}
+
+impl<N: Peers + Unpin + Send + Sync + 'static> ConnectionHandler
+	for FlashblocksP2PProtocol<N>
+{
+	type Connection = FlashblocksConnection<N>;
+
+	fn protocol(&self) -> Protocol {
+		Protocol::new(Self::capability(), 1)
+	}
+
+	fn on_unsupported_by_peer(
+		self,
+		_supported: &SharedCapabilities,
+		_direction: Direction,
+		_peer_id: PeerId,
+	) -> OnNotSupported {
+		OnNotSupported::KeepAlive
+	}
+
+	fn into_connection(
+		self,
+		direction: Direction,
+		peer_id: PeerId,
+		conn: ProtocolConnection,
+	) -> Self::Connection {
+		let capability = Self::capability();
+
+		tracing::info!(
+				target: "flashblocks::p2p",
+				%peer_id,
+				%direction,
+				capability = %capability.name,
+				version = %capability.version,
+				"new flashblocks connection"
+		);
+
+		let peer_rx = self.handle.ctx.peer_tx.subscribe();
+
+		FlashblocksConnection::new(
+			self,
+			conn,
+			peer_id,
+			BroadcastStream::new(peer_rx),
+		)
 	}
 }

@@ -7288,6 +7288,7 @@ dependencies = [
  "chrono",
  "dashmap 6.1.0",
  "eyre",
+ "futures",
  "parking_lot",
  "rblib",
  "reth-chain-state",
@@ -7296,6 +7297,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-stream",
  "tracing",
  "world-chain-node",
 ]
