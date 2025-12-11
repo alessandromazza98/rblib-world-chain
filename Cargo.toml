@@ -5,9 +5,6 @@ edition = "2024"
 authors = ["Alessandro Mazza <alessandro98.mazza@gmail.com>"]
 
 [dependencies]
-# world-chain
-world-chain-node = { path = "/Users/alessandro.mazza/work/world-chain/crates/world/node" }
-
 # rblib
 rblib = { path = "/Users/alessandro.mazza/work/rblib" }
 # rblib = { git = "https://github.com/flashbots/rblib", features = [ "optimism" ], tag = "v0.4.1" }

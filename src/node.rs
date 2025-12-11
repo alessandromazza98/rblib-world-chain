@@ -1,7 +1,7 @@
 use {
 	crate::{
 		config::{WorldChainArgs, WorldChainNodeConfig},
-		flashblocks::state::FlashblocksStateExecutor,
+		flashblocks::{p2p::FlashblocksHandle, state::FlashblocksStateExecutor},
 		network::FlashblocksNetworkBuilder,
 	},
 	rblib::reth::{
@@ -28,6 +28,7 @@ use {
 				OpStorage,
 				args::RollupArgs,
 				node::OpPayloadBuilder,
+				payload::config::OpBuilderConfig,
 			},
 			primitives::OpPrimitives,
 			rpc::OpEthApiBuilder,
@@ -39,6 +40,29 @@ use {
 pub struct FlashblocksNode {
 	config: WorldChainNodeConfig,
 	flashblocks_state: Option<FlashblocksStateExecutor>,
+}
+
+impl FlashblocksNode {
+	/// Create a new `FlashblocksNode` with the provided config.
+	pub fn new(config: WorldChainNodeConfig) -> Self {
+		let flashblocks_handle = FlashblocksHandle::new();
+		let (pending_block, _) = tokio::sync::watch::channel(None);
+		let op_builder_config = OpBuilderConfig::default();
+		let flashblocks_state = FlashblocksStateExecutor::new(
+			flashblocks_handle.clone(),
+			op_builder_config,
+			pending_block,
+		);
+		Self {
+			config,
+			flashblocks_state: Some(flashblocks_state),
+		}
+	}
+
+	/// Returns the flashblocks state.
+	pub fn flashblocks_state(&self) -> Option<FlashblocksStateExecutor> {
+		self.flashblocks_state.clone()
+	}
 }
 
 impl<N> Node<N> for FlashblocksNode

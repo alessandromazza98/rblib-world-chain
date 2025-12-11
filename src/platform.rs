@@ -1,5 +1,5 @@
 use {
-	crate::context::WorldContext,
+	crate::{FlashblocksNode, context::WorldContext},
 	rblib::{
 		alloy::optimism::consensus::OpPooledTransaction as AlloyPoolTx,
 		prelude::{
@@ -34,7 +34,6 @@ use {
 	},
 	serde::{Deserialize, Serialize},
 	std::sync::Arc,
-	world_chain_node::{context::FlashblocksContext, node::WorldChainNode},
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,7 +45,7 @@ impl Platform for WorldChain {
 	type DefaultLimits = types::DefaultLimits<Optimism>;
 	type EvmConfig = types::EvmConfig<Optimism>;
 	type ExtraLimits = types::ExtraLimits<Optimism>;
-	type NodeTypes = WorldChainNode<FlashblocksContext>;
+	type NodeTypes = FlashblocksNode;
 	type PooledTransaction = types::PooledTransaction<Optimism>;
 
 	fn evm_config<P>(chainspec: Arc<types::ChainSpec<P>>) -> Self::EvmConfig

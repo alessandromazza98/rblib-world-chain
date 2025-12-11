@@ -9,7 +9,9 @@ mod step;
 
 // re-exports
 pub use {
+	config::{WorldChainArgs, WorldChainNodeConfig},
 	limits::FlashblockLimits,
+	node::FlashblocksNode,
 	platform::WorldChain,
 	step::{
 		optimism_prologue::OptimismPrologue,
