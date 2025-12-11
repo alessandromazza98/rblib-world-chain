@@ -1,8 +1,8 @@
 mod context;
+mod flashblocks;
 mod limits;
 mod p2p;
 mod platform;
-mod flashblocks;
 mod step;
 
 // re-exports

@@ -96,7 +96,7 @@ pub struct PublishFlashblock {
 impl PublishFlashblock {
 	pub fn to() -> Self {
 		Self {
-			p2p: FlashblocksP2p {},
+			p2p: todo!(),
 			block_number: AtomicU64::default(),
 			block_base: RwLock::new(None),
 			metrics: Metrics::default(),
@@ -162,22 +162,18 @@ impl Step<WorldChain> for PublishFlashblock {
 			},
 		};
 
-		// TODO: uncomment this and add the p2p layer
-		// // Push the contents of the payload
-		// if let Err(e) = self.sink.publish(&FlashblocksPayloadV1 {
-		// 	base,
-		// 	diff,
-		// 	payload_id: ctx.block().payload_id(),
-		// 	index,
-		// 	metadata: serde_json::Value::Null,
-		// }) {
-		// 	self.metrics.websocket_publish_errors_total.increment(1);
-		// 	tracing::error!("Failed to publish flashblock to websocket: {e}");
+		// Push the contents of the payload
+		if let Err(e) = self
+			.p2p
+			.publish(flashblock.into_flashblock(), op_built_payload.clone())
+		{
+			tracing::error!("Failed to publish flashblock to p2p: {e}");
 
-		// 	// on transport error, do not place a barrier, just return the payload
-		// as 	// is. it may be picked up by the next iteration.
-		// 	return ControlFlow::Ok(payload);
-		// }
+			// on transport error, do not place a barrier, just return the payload
+			// as is. It may be picked up by the next iteration.
+			// TODO: do we want to return error in this scenario?
+			return ControlFlow::Ok(payload);
+		}
 
 		// block published to WS successfully
 		self.times.on_published_block(&self.metrics);
