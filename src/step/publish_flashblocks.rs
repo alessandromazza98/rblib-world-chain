@@ -2,8 +2,7 @@ use {
 	crate::{
 		WorldChain,
 		context::WorldContext,
-		flashblocks::FlashblocksStateExecutor,
-		p2p::FlashblocksP2p,
+		flashblocks::{p2p::FlashblocksP2p, state::FlashblocksStateExecutor},
 	},
 	atomic_time::AtomicOptionInstant,
 	chrono::Utc,

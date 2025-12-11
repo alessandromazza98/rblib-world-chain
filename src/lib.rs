@@ -1,7 +1,6 @@
 mod context;
 mod flashblocks;
 mod limits;
-mod p2p;
 mod platform;
 mod step;
 
