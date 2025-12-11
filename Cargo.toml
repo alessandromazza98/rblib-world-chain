@@ -7,7 +7,6 @@ authors = ["Alessandro Mazza <alessandro98.mazza@gmail.com>"]
 [dependencies]
 # world-chain
 world-chain-node = { path = "/Users/alessandro.mazza/work/world-chain/crates/world/node" }
-flashblocks-builder = { path = "/Users/alessandro.mazza/work/world-chain/crates/flashblocks/builder" }
 
 # rblib
 rblib = { path = "/Users/alessandro.mazza/work/rblib" }
