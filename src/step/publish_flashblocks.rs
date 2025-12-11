@@ -2,19 +2,21 @@ use {
 	crate::{
 		WorldChain,
 		context::WorldContext,
-		flashblocks::{p2p::FlashblocksP2p, state::FlashblocksStateExecutor},
+		flashblocks::{
+			p2p::FlashblocksP2p,
+			primitives::{
+				ExecutionPayloadBaseV1,
+				ExecutionPayloadFlashblockDeltaV1,
+				Flashblock,
+				FlashblockMetadata,
+				FlashblocksPayloadV1,
+			},
+			state::FlashblocksStateExecutor,
+		},
 	},
 	atomic_time::AtomicOptionInstant,
 	chrono::Utc,
 	core::sync::atomic::{AtomicU64, Ordering},
-	flashblocks_primitives::{
-		flashblocks::{Flashblock, FlashblockMetadata},
-		primitives::{
-			ExecutionPayloadBaseV1,
-			ExecutionPayloadFlashblockDeltaV1,
-			FlashblocksPayloadV1,
-		},
-	},
 	parking_lot::RwLock,
 	rblib::{
 		alloy::{

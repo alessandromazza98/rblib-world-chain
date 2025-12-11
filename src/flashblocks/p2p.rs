@@ -1,18 +1,13 @@
 use {
 	crate::flashblocks::{
-		primitives::FlashblocksP2PMsg,
+		primitives::FlashblocksPayloadV1,
 		state::FlashblocksStateExecutor,
 	},
-	alloy_rlp::{BytesMut, Encodable},
+	alloy_rlp::{BytesMut, Decodable, Encodable, Header},
 	chrono::Utc,
-	ed25519_dalek::{SigningKey, VerifyingKey},
-	flashblocks_p2p::protocol::{
-		error::FlashblocksP2PError,
-		handler::{FlashblocksP2PState, PeerMsg},
-	},
-	flashblocks_primitives::primitives::FlashblocksPayloadV1,
 	parking_lot::Mutex,
-	rblib::reth::optimism::node::OpBuiltPayload,
+	rblib::reth::{optimism::node::OpBuiltPayload, payload::PayloadId},
+	serde::{Deserialize, Serialize},
 	std::sync::Arc,
 	tokio::sync::broadcast,
 };
@@ -51,6 +46,102 @@ impl FlashblocksP2p {
 	}
 }
 
+/// A message that can be sent over the Flashblocks P2P network.
+///
+/// This enum represents the top-level message types that can be transmitted
+/// over the P2P network.
+#[repr(u8)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Eq)]
+pub enum FlashblocksP2PMsg {
+	/// A flashblock payload containing a list of transactions and associated
+	/// metadata
+	FlashblocksPayloadV1(FlashblocksPayloadV1) = 0x00,
+}
+
+impl Encodable for FlashblocksP2PMsg {
+	fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
+		match self {
+			Self::FlashblocksPayloadV1(payload) => {
+				Header {
+					list: true,
+					payload_length: 1 + payload.length(),
+				}
+				.encode(out);
+				0u32.encode(out);
+				payload.encode(out);
+			}
+		};
+	}
+
+	fn length(&self) -> usize {
+		let body_len = match self {
+			Self::FlashblocksPayloadV1(payload) => 1 + payload.length(),
+		};
+
+		Header {
+			list: true,
+			payload_length: body_len,
+		}
+		.length()
+			+ body_len
+	}
+}
+
+impl Decodable for FlashblocksP2PMsg {
+	fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
+		let hdr = Header::decode(buf)?;
+		if !hdr.list {
+			return Err(alloy_rlp::Error::Custom(
+				"FlashblocksP2PMsg must be an RLP list",
+			));
+		}
+
+		let tag = u8::decode(buf)?;
+		let value = match tag {
+			0 => Self::FlashblocksPayloadV1(FlashblocksPayloadV1::decode(buf)?),
+			_ => return Err(alloy_rlp::Error::Custom("unknown tag")),
+		};
+
+		Ok(value)
+	}
+}
+
+/// Messages that can be broadcast over a channel to each internal peer
+/// connection.
+///
+/// These messages are used internally to coordinate the broadcasting of
+/// flashblocks and publishing status changes to all connected peers.
+#[derive(Clone, Debug)]
+pub enum PeerMsg {
+	/// Send an already serialized flashblock to all peers.
+	FlashblocksPayloadV1((PayloadId, usize, BytesMut)),
+}
+
+/// Protocol state that stores the flashblocks P2P protocol events and
+/// coordination data.
+///
+/// This struct maintains the current state of flashblock publishing, including
+/// coordination with other publishers, payload buffering, and ordering
+/// information. It serves as the central state management for the flashblocks
+/// P2P protocol handler.
+#[derive(Debug, Default)]
+pub struct FlashblocksP2PState {
+	/// Most recent payload ID for the current block being processed.
+	pub payload_id: PayloadId,
+	/// Timestamp of the most recent flashblocks payload.
+	pub payload_timestamp: u64,
+	/// Timestamp at which the most recent flashblock was received in ns since
+	/// the unix epoch.
+	pub flashblock_timestamp: i64,
+	/// The index of the next flashblock to emit over the flashblocks stream.
+	/// Used to maintain strict ordering of flashblock delivery.
+	pub flashblock_index: usize,
+	/// Buffer of flashblocks for the current payload, indexed by flashblock
+	/// sequence number. Contains `None` for flashblocks not yet received,
+	/// enabling out-of-order receipt while maintaining in-order delivery.
+	pub flashblocks: Vec<Option<FlashblocksPayloadV1>>,
+}
+
 /// Context struct containing shared resources for the flashblocks P2P protocol.
 ///
 /// This struct holds the network handle, cryptographic keys, and communication
@@ -59,11 +150,6 @@ impl FlashblocksP2p {
 /// and broadcasting.
 #[derive(Clone, Debug)]
 pub struct FlashblocksP2PCtx {
-	/// Authorizer's verifying key used to verify authorization signatures from
-	/// rollup-boost.
-	pub authorizer_vk: VerifyingKey,
-	/// Builder's signing key used to sign outgoing authorized P2P messages.
-	pub builder_sk: Option<SigningKey>,
 	/// Broadcast sender for peer messages that will be sent to all connected
 	/// peers. Messages may not be strictly ordered due to network conditions.
 	pub peer_tx: broadcast::Sender<PeerMsg>,
@@ -91,16 +177,11 @@ pub struct FlashblocksHandle {
 }
 
 impl FlashblocksHandle {
-	pub fn new(
-		authorizer_vk: VerifyingKey,
-		builder_sk: Option<SigningKey>,
-	) -> Self {
+	pub fn new() -> Self {
 		let flashblock_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
 		let peer_tx = broadcast::Sender::new(BROADCAST_BUFFER_CAPACITY);
 		let state = Arc::new(Mutex::new(FlashblocksP2PState::default()));
 		let ctx = FlashblocksP2PCtx {
-			authorizer_vk,
-			builder_sk,
 			peer_tx,
 			flashblock_tx,
 		};
@@ -110,14 +191,6 @@ impl FlashblocksHandle {
 
 	pub fn flashblocks_tx(&self) -> broadcast::Sender<FlashblocksPayloadV1> {
 		self.ctx.flashblock_tx.clone()
-	}
-
-	pub fn builder_sk(&self) -> Result<&SigningKey, FlashblocksP2PError> {
-		self
-			.ctx
-			.builder_sk
-			.as_ref()
-			.ok_or(FlashblocksP2PError::MissingBuilderSk)
 	}
 
 	pub fn publish_new(&self, payload: FlashblocksPayloadV1) {

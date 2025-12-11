@@ -1,8 +1,7 @@
 use {
-	crate::flashblocks::p2p::FlashblocksHandle,
-	flashblocks_primitives::{
-		flashblocks::{Flashblock, Flashblocks},
-		primitives::FlashblocksPayloadV1,
+	crate::flashblocks::{
+		p2p::FlashblocksHandle,
+		primitives::{Flashblock, Flashblocks, FlashblocksPayloadV1},
 	},
 	parking_lot::RwLock,
 	rblib::reth::{

@@ -1,7 +1,9 @@
 use {
-	crate::{WorldChain, context::WorldContext},
-	flashblocks_builder::executor::FlashblocksStateExecutor,
-	flashblocks_primitives::flashblocks::Flashblock,
+	crate::{
+		WorldChain,
+		context::WorldContext,
+		flashblocks::{primitives::Flashblock, state::FlashblocksStateExecutor},
+	},
 	rblib::{
 		alloy::optimism::consensus::OpTxEnvelope,
 		prelude::{
@@ -13,8 +15,7 @@ use {
 			StepContext,
 		},
 		reth::{
-			optimism::{node::OpBuiltPayload, primitives::OpReceipt},
-			payload::primitives::BuiltPayload,
+			optimism::node::OpBuiltPayload,
 			primitives::{Block, RecoveredBlock},
 		},
 	},
