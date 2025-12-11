@@ -17,6 +17,7 @@ use {
 			chainspec::OpChainSpec,
 			node::{
 				OpAddOns,
+				OpAddOnsBuilder,
 				OpConsensusBuilder,
 				OpEngineApiBuilder,
 				OpEngineTypes,
@@ -104,7 +105,15 @@ where
 	}
 
 	fn add_ons(&self) -> Self::AddOns {
-		todo!()
+		OpAddOnsBuilder::default()
+			.with_sequencer(self.config.args.rollup.sequencer.clone())
+			.with_sequencer_headers(self.config.args.rollup.sequencer_headers.clone())
+			.with_enable_tx_conditional(self.config.args.rollup.enable_tx_conditional)
+			.with_min_suggested_priority_fee(
+				self.config.args.rollup.min_suggested_priority_fee,
+			)
+			.with_historical_rpc(self.config.args.rollup.historical_rpc.clone())
+			.build()
 	}
 }
 
