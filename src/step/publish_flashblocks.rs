@@ -322,10 +322,12 @@ impl PublishFlashblock {
 						checkpoint.result().map(|res| res.results()[i].clone())
 					{
 						let gas_used = result.gas_used();
-						let miner_fee = tx
-							.effective_tip_per_gas(base_fee)
-							.expect("fee is always valid; execution succeeded");
-						total_fees += U256::from(miner_fee) * U256::from(gas_used);
+						if !tx.is_deposit() {
+							let miner_fee = tx
+								.effective_tip_per_gas(base_fee)
+								.expect("fee is always valid; execution succeeded");
+							total_fees += U256::from(miner_fee) * U256::from(gas_used);
+						}
 						cumulative_gas_used += gas_used;
 
 						let receipt = match tx.tx_type() {
