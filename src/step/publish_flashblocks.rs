@@ -130,10 +130,10 @@ impl Step<WorldChain> for PublishFlashblock {
 
 		// Q: do we want to skip empty flashblocks? Or do we want to stream them
 		// nevertheless?
-		if transactions.is_empty() {
-			// nothing to publish, empty flashblocks are not interesting, skip.
-			return ControlFlow::Ok(payload);
-		}
+		// if transactions.is_empty() {
+		// 	// nothing to publish, empty flashblocks are not interesting, skip.
+		// 	return ControlFlow::Ok(payload);
+		// }
 
 		// increment flashblock number
 		let index = self.block_number.fetch_add(1, Ordering::SeqCst);
@@ -180,6 +180,7 @@ impl Step<WorldChain> for PublishFlashblock {
 			// TODO: do we want to return error in this scenario?
 			return ControlFlow::Ok(payload);
 		}
+		tracing::info!("🔥 flashblock published over p2p 🔥");
 
 		// block published to WS successfully
 		self.times.on_published_block(&self.metrics);

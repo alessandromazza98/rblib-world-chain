@@ -6,7 +6,7 @@ authors = ["Alessandro Mazza <alessandro98.mazza@gmail.com>"]
 
 [dependencies]
 # rblib
-rblib = { path = "/Users/alessandro.mazza/work/rblib" }
+rblib = { path = "../rblib" }
 # rblib = { git = "https://github.com/flashbots/rblib", features = [ "optimism" ], tag = "v0.4.1" }
 
 # alloy
@@ -32,4 +32,4 @@ futures = "0.3.31"
 clap = "4.5.53"
 
 [dev-dependencies]
-rblib = { path = "/Users/alessandro.mazza/work/rblib", features = ["test-utils" ] }
+rblib = { path = "../rblib", features = ["test-utils" ] }

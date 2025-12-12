@@ -65,7 +65,10 @@ fn main() {
 					Pipeline::default()
 						.with_pipeline(
 							Loop, // inner loop, individual flashblocks
-							(AppendOrders::from_pool(&pool), BreakAfterDeadline)
+							(
+								AppendOrders::from_pool(&pool).with_ok_on_limit(),
+								BreakAfterDeadline,
+							)
 								.with_epilogue(publish_flashlock)
 								.with_limits(FlashblockLimits::with_interval(interval)),
 						)

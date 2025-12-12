@@ -1,5 +1,8 @@
 use {
-	crate::WorldChain, core::time::Duration, rblib::prelude::*, tracing::debug
+	crate::WorldChain,
+	core::time::Duration,
+	rblib::prelude::*,
+	tracing::debug,
 };
 
 /// Specifies the limits for individual flashblocks.
@@ -28,10 +31,17 @@ impl ScopedLimits<WorldChain> for FlashblockLimits {
 		);
 		let remaining_time =
 			payload_deadline.saturating_sub(payload.building_since().elapsed());
+		tracing::info!("payload deadline: {:?}", payload_deadline);
+		tracing::info!(
+			"payload building since time: {:?}",
+			payload.building_since().elapsed()
+		);
+		tracing::info!("remaining time: {:?}", remaining_time);
 
 		#[allow(clippy::cast_possible_truncation)]
 		let remaining_blocks =
 			(remaining_time.as_millis() / self.interval.as_millis()) as u64;
+		tracing::info!("remaining blocks: {:?}", remaining_blocks);
 
 		if remaining_blocks <= 1 {
 			// we don't have enough time for more than one block
