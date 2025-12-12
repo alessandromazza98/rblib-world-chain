@@ -49,10 +49,8 @@ where
 	) -> eyre::Result<Self::Network> {
 		let handle = self.inner.build_network(ctx, pool).await?;
 		if let Some(flashblocks_handle) = self.flashblocks_p2p_handle {
-			let flashblocks_rlpx = FlashblocksP2PProtocol {
-				network: handle.clone(),
-				handle: flashblocks_handle,
-			};
+			let flashblocks_rlpx =
+				FlashblocksP2PProtocol::new(handle.clone(), flashblocks_handle);
 			handle.add_rlpx_sub_protocol(flashblocks_rlpx.into_rlpx_sub_protocol());
 
 			// TODO: eventually uncomment this👇

@@ -313,7 +313,7 @@ impl FlashblocksP2PCtx {
 
 				// Don't measure the interval at the block boundary
 				if state.flashblock_index != 0 {
-					let interval = now - state.flashblock_timestamp;
+					let _interval = now - state.flashblock_timestamp;
 				}
 
 				// Update the index and timestamp
