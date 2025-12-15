@@ -7,16 +7,15 @@ use {
 	rblib::reth::{
 		api::{FullNodeTypes, NodeTypes, PrimitivesTy, TxTy},
 		builder::{BuilderContext, components::NetworkBuilder},
-		chainspec::Hardforks,
 		eth_wire_types::NetPrimitivesFor,
 		ethereum::network::api::FullNetwork,
 		network::{NetworkProtocols, protocol::IntoRlpxSubProtocol},
 		optimism::{
 			chainspec::OpChainSpec,
 			evm::{OpEvmConfig, OpRethReceiptBuilder},
-			forks::OpHardforks,
-			node::payload::builder::OpPayloadBuilderCtx,
 		},
+		primitives::Header,
+		provider::{HeaderProvider, StateProviderFactory},
 		transaction_pool::{PoolTransaction, TransactionPool},
 	},
 };
@@ -44,6 +43,7 @@ impl<T, Network, Node, Pool> NetworkBuilder<Node, Pool>
 where
 	T: NetworkBuilder<Node, Pool, Network = Network>,
 	Node: FullNodeTypes<Types: NodeTypes<ChainSpec = OpChainSpec>>,
+	Node::Provider: StateProviderFactory + HeaderProvider<Header = Header>,
 	Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
 		+ Unpin
 		+ 'static,
@@ -70,14 +70,6 @@ where
 				OpEvmConfig::new(ctx.chain_spec(), OpRethReceiptBuilder::default());
 			let op_payload_builder_ctx_builder =
 				OpPayloadBuilderCtxBuilder::default();
-			// let op_payload_builder_ctx = OpPayloadBuilderCtx {
-			// 	evm_config,
-			// 	builder_config: flashblocks_state.builder_config().clone(),
-			// 	chain_spec: ctx.chain_spec(),
-			// 	config,
-			// 	cancel: cancel.clone(),
-			// 	best_payload,
-			// };
 			flashblocks_state.launch(
 				ctx,
 				pool,

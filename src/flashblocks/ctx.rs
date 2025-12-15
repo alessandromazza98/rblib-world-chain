@@ -27,7 +27,7 @@ impl OpPayloadBuilderCtxBuilder {
 	/// This method is called at the start of each payload building job to create
 	/// a fresh context with the appropriate settings. The context encapsulates
 	/// all the state and configuration needed for building a single payload.
-	fn build<Provider>(
+	pub fn build<Provider>(
 		&self,
 		provider: Provider,
 		evm: OpEvmConfig,
