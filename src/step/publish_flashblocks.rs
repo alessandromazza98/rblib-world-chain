@@ -145,7 +145,7 @@ impl Step<WorldChain> for PublishFlashblock {
 			receipts_root: block.receipts_root(),
 			logs_bloom: block.logs_bloom(),
 			gas_used: payload.cumulative_gas_used(),
-			block_hash: B256::ZERO,
+			block_hash: block.hash(),
 			transactions,
 			withdrawals: vec![],
 			withdrawals_root: block.withdrawals_root().unwrap_or_default(),
