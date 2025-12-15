@@ -35,6 +35,10 @@ ARG WORLD_CHAIN_BUILDER_BIN="examples/pipeline"
 
 COPY --from=planner /work/recipe.json /work/recipe.json
 
+# `cargo-chef cook` must be able to resolve local path dependencies.
+# The recipe references `rblib` at `/work/rblib`, so copy it in before cooking.
+COPY --from=planner /work/rblib /work/rblib
+
 # BuildKit cache mounts speed up rebuilds dramatically (registry + git + target).
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
