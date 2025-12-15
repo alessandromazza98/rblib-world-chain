@@ -134,7 +134,7 @@ where
 			inner,
 			flashblocks_state
 				.as_ref()
-				.map(|flashhblocks_state| flashhblocks_state.p2p_handle()),
+				.map(|flashhblocks_state| flashhblocks_state.clone()),
 		);
 		ComponentsBuilder::default()
 			.node_types::<N>()

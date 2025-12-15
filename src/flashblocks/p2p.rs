@@ -7,6 +7,7 @@ use {
 	alloy_rlp::{BytesMut, Decodable, Encodable, Header},
 	chrono::Utc,
 	core::{fmt, net::SocketAddr},
+	futures::{Stream, StreamExt, stream},
 	parking_lot::Mutex,
 	rblib::reth::{
 		eth_wire_types::Capability,
@@ -216,6 +217,34 @@ impl FlashblocksHandle {
 	pub fn publish_new(&self, payload: FlashblocksPayloadV1) {
 		let mut state = self.state.lock();
 		self.ctx.publish(&mut state, payload);
+	}
+
+	/// Returns a stream of ordered flashblocks starting from the beginning of the
+	/// current payload.
+	///
+	/// # Behavior
+	///
+	/// The stream will continue to yield flashblocks for consecutive payloads as
+	/// well, so consumers should take care to handle the stream appropriately.
+	pub fn flashblock_stream(
+		&self,
+	) -> impl Stream<Item = FlashblocksPayloadV1> + Send + 'static {
+		let flashblocks = self
+			.state
+			.lock()
+			.flashblocks
+			.clone()
+			.into_iter()
+			.map_while(|x| x);
+
+		let receiver = self.ctx.flashblock_tx.subscribe();
+
+		let current = stream::iter(flashblocks);
+		let future =
+			tokio_stream::StreamExt::map_while(BroadcastStream::new(receiver), |x| {
+				x.ok()
+			});
+		current.chain(future)
 	}
 }
 

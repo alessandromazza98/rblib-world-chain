@@ -1,14 +1,28 @@
 use {
 	crate::flashblocks::{
+		ctx::OpPayloadBuilderCtxBuilder,
 		p2p::FlashblocksHandle,
 		primitives::{Flashblock, Flashblocks, FlashblocksPayloadV1},
 	},
+	futures::StreamExt,
 	parking_lot::RwLock,
-	rblib::reth::{
-		api::Events,
-		optimism::{
-			node::{OpBuiltPayload, OpEngineTypes, payload::config::OpBuilderConfig},
-			primitives::OpPrimitives,
+	rblib::{
+		alloy::consensus,
+		reth::{
+			api::{Events, FullNodeTypes, NodeTypes, TxTy},
+			builder::BuilderContext,
+			optimism::{
+				chainspec::OpChainSpec,
+				evm::OpEvmConfig,
+				node::{
+					OpBuiltPayload,
+					OpEngineTypes,
+					payload::{builder::OpPayloadBuilderCtx, config::OpBuilderConfig},
+				},
+				primitives::OpPrimitives,
+			},
+			provider::{HeaderProvider, StateProviderFactory},
+			transaction_pool::{PoolTransaction, TransactionPool},
 		},
 	},
 	reth_chain_state::ExecutedBlock,
@@ -112,4 +126,54 @@ impl FlashblocksStateExecutor {
 	pub fn p2p_handle(&self) -> FlashblocksHandle {
 		self.p2p_handle.clone()
 	}
+
+	/// Returns a reference to the op builder config.
+	pub fn builder_config(&self) -> &OpBuilderConfig {
+		&self.builder_config
+	}
+
+	/// Launches the executor to listen for new flashblocks and build payloads.
+	pub fn launch<Node, Pool>(
+		&self,
+		ctx: &BuilderContext<Node>,
+		pool: Pool,
+		// TODO: use `WorldChainPayloadBuilderCtx` type
+		payload_builder_ctx_builder: OpPayloadBuilderCtxBuilder,
+		evm_config: OpEvmConfig,
+	) where
+		Pool: TransactionPool<
+				Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>,
+			> + Unpin
+			+ 'static,
+		// Node::Provider:
+		// 	StateProviderFactory + HeaderProvider<Header = consensus::Header>,
+		Node: FullNodeTypes<Types: NodeTypes<ChainSpec = OpChainSpec>>,
+	{
+		let mut stream = self.p2p_handle.flashblock_stream();
+		let this = self.clone();
+		let provider = ctx.provider().clone();
+		let chain_spec = ctx.chain_spec().clone();
+
+		let pending_block = self.pending_block.clone();
+
+		ctx
+			.task_executor()
+			.spawn_critical("flashblocks executor", async move {
+				while let Some(flashblock) = stream.next().await {
+					if let Err(e) = process_flashblock(
+						&provider,
+						&pool,
+						&payload_builder_ctx_builder,
+						&evm_config,
+						&this,
+						&chain_spec,
+						flashblock,
+						pending_block.clone(),
+					) {
+						tracing::error!("error processing flashblock: {e:?}")
+					}
+				}
+			});
+	}
 }
+
