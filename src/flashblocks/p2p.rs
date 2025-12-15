@@ -83,40 +83,21 @@ impl Encodable for FlashblocksP2PMsg {
 	fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
 		match self {
 			Self::FlashblocksPayloadV1(payload) => {
-				Header {
-					list: true,
-					payload_length: 1 + payload.length(),
-				}
-				.encode(out);
-				0u32.encode(out);
+				0u8.encode(out);
 				payload.encode(out);
 			}
 		};
 	}
 
 	fn length(&self) -> usize {
-		let body_len = match self {
+		match self {
 			Self::FlashblocksPayloadV1(payload) => 1 + payload.length(),
-		};
-
-		Header {
-			list: true,
-			payload_length: body_len,
 		}
-		.length()
-			+ body_len
 	}
 }
 
 impl Decodable for FlashblocksP2PMsg {
 	fn decode(buf: &mut &[u8]) -> Result<Self, alloy_rlp::Error> {
-		let hdr = Header::decode(buf)?;
-		if !hdr.list {
-			return Err(alloy_rlp::Error::Custom(
-				"FlashblocksP2PMsg must be an RLP list",
-			));
-		}
-
 		let tag = u8::decode(buf)?;
 		let value = match tag {
 			0 => Self::FlashblocksPayloadV1(FlashblocksPayloadV1::decode(buf)?),
