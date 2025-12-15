@@ -258,9 +258,7 @@ impl FlashblocksP2PCtx {
 		let payload_id = payload.payload_id;
 		// Check if this is a globally new payload
 		// TODO: fix the unwrap
-		if payload.metadata.flashblock_timestamp.unwrap() as u64
-			> state.payload_timestamp
-		{
+		if payload_id != state.payload_id {
 			state.payload_id = payload_id;
 			state.payload_timestamp =
 				payload.metadata.flashblock_timestamp.unwrap() as u64;
