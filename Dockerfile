@@ -32,6 +32,7 @@ FROM chef AS builder
 WORKDIR /work/rblib-world-chain
 
 ARG WORLD_CHAIN_BUILDER_BIN="examples/pipeline"
+ARG TARGETARCH
 
 COPY --from=planner /work/recipe.json /work/recipe.json
 
@@ -39,10 +40,10 @@ COPY --from=planner /work/recipe.json /work/recipe.json
 # The recipe references `rblib` at `/work/rblib`, so copy it in before cooking.
 COPY --from=planner /work/rblib /work/rblib
 
-# BuildKit cache mounts speed up rebuilds dramatically (registry + git + target).
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/work/rblib-world-chain/target \
+# BuildKit cache mounts with platform-specific IDs to prevent cross-arch contamination.
+RUN --mount=type=cache,id=cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git-${TARGETARCH},target=/usr/local/cargo/git \
+    --mount=type=cache,id=target-${TARGETARCH},target=/work/rblib-world-chain/target \
     cargo chef cook --recipe-path /work/recipe.json
 
 # Copy sources after deps are cached
@@ -51,10 +52,11 @@ COPY rblib-world-chain ./rblib-world-chain
 COPY rblib ./rblib
 
 WORKDIR /work/rblib-world-chain
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/work/rblib-world-chain/target \
-      cargo build --example pipeline;
+RUN --mount=type=cache,id=cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git-${TARGETARCH},target=/usr/local/cargo/git \
+    --mount=type=cache,id=target-${TARGETARCH},target=/work/rblib-world-chain/target \
+    cargo build --example pipeline && \
+    cp target/debug/examples/pipeline /pipeline
 
 # Deployments depend on sh wget and awscli v2
 FROM public.ecr.aws/docker/library/debian:bookworm-slim
@@ -74,9 +76,8 @@ RUN apt-get update && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
-ARG WORLD_CHAIN_BUILDER_BIN="examples/pipeline"
-
-COPY --from=builder /work/rblib-world-chain/target/debug/${WORLD_CHAIN_BUILDER_BIN} /usr/local/bin/
+# Binary was copied out of cache mount during build step
+COPY --from=builder /pipeline /usr/local/bin/pipeline
 
 EXPOSE 30303 30303/udp 9001 8545 8546
 
