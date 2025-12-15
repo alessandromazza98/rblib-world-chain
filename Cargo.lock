@@ -6381,6 +6381,7 @@ dependencies = [
 name = "rblib-world-chain"
 version = "0.1.0"
 dependencies = [
+ "alloy-op-evm",
  "alloy-rlp",
  "atomic-time",
  "chrono",

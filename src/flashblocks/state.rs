@@ -1,5 +1,6 @@
 use {
 	crate::flashblocks::{
+		builder::FlashblockBuilder,
 		ctx::OpPayloadBuilderCtxBuilder,
 		p2p::FlashblocksHandle,
 		primitives::{Flashblock, Flashblocks, FlashblocksPayloadV1},
@@ -324,10 +325,11 @@ where
 	*latest_payload = Some((payload.clone(), index));
 	pending_block.send_replace(payload.executed_block());
 
-	state_executor.broadcast_payload(
-		Events::BuiltPayload(payload.clone()),
-		payload_events.clone(),
-	)?;
+	// TODO: uncomment this👇
+	// state_executor.broadcast_payload(
+	// 	Events::BuiltPayload(payload.clone()),
+	// 	payload_events.clone(),
+	// )?;
 
 	Ok(())
 }

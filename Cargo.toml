@@ -12,6 +12,9 @@ rblib = { path = "../rblib" }
 # alloy
 alloy-rlp = { version = "0.3.12", default-features = false }
 
+# alloy-op
+alloy-op-evm = { version = "0.23.0", default-features = false }
+
 # reth
 reth-optimism-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.3" }
 reth-chain-state = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.3" }
