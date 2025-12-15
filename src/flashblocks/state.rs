@@ -14,7 +14,7 @@ use {
 			optimism::consensus::{OpTxEnvelope, encode_holocene_extra_data},
 		},
 		reth::{
-			api::{Events, FullNodeTypes, NodeTypes, TxTy},
+			api::{Events, FullNodeTypes, NodeTypes},
 			builder::BuilderContext,
 			optimism::{
 				chainspec::OpChainSpec,
@@ -26,6 +26,7 @@ use {
 					payload::config::OpBuilderConfig,
 				},
 				primitives::OpPrimitives,
+				txpool::OpPooledTx,
 			},
 			payload::{
 				BuiltPayload,
@@ -38,7 +39,11 @@ use {
 			provider::{ChainSpecProvider, HeaderProvider, StateProviderFactory},
 			revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
 			rpc::types::Withdrawals,
-			transaction_pool::{PoolTransaction, TransactionPool},
+			transaction_pool::{
+				PoolTransaction,
+				TransactionPool,
+				ValidPoolTransaction,
+			},
 		},
 	},
 	reth_chain_state::ExecutedBlock,
@@ -158,7 +163,7 @@ impl FlashblocksStateExecutor {
 		evm_config: OpEvmConfig,
 	) where
 		Pool: TransactionPool<
-				Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>,
+				Transaction: PoolTransaction<Consensus = OpTxEnvelope> + OpPooledTx,
 			> + Unpin
 			+ 'static,
 		Node::Provider: StateProviderFactory + HeaderProvider<Header = Header>,
@@ -210,7 +215,9 @@ where
 		+ HeaderProvider<Header = Header>
 		+ ChainSpecProvider<ChainSpec = OpChainSpec>
 		+ Clone,
-	Pool: TransactionPool + 'static,
+	Pool: TransactionPool<
+			Transaction: PoolTransaction<Consensus = OpTxEnvelope> + OpPooledTx,
+		> + 'static,
 {
 	tracing::trace!(target: "flashblocks::state_executor",id = %flashblock.payload_id, index = %flashblock.index, "processing flashblock");
 
@@ -297,7 +304,12 @@ where
 		latest_payload.as_ref().map(|p| p.0.clone()),
 	);
 
-	let best = |_| BestPayloadTransactions::new(vec![].into_iter());
+	let best = |_| {
+		// The empty vec needs an explicit tx type, otherwise Rust can't infer the
+		// `PoolTransaction` used by `BestPayloadTransactions`.
+		let empty: Vec<Arc<ValidPoolTransaction<Pool::Transaction>>> = Vec::new();
+		BestPayloadTransactions::<Pool::Transaction, _>::new(empty.into_iter())
+	};
 	let db = StateProviderDatabase::new(&state_provider);
 
 	let outcome = FlashblockBuilder::new(best).build(

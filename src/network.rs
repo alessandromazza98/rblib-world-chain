@@ -4,19 +4,23 @@ use {
 		p2p::FlashblocksP2PProtocol,
 		state::FlashblocksStateExecutor,
 	},
-	rblib::reth::{
-		api::{FullNodeTypes, NodeTypes, PrimitivesTy, TxTy},
-		builder::{BuilderContext, components::NetworkBuilder},
-		eth_wire_types::NetPrimitivesFor,
-		ethereum::network::api::FullNetwork,
-		network::{NetworkProtocols, protocol::IntoRlpxSubProtocol},
-		optimism::{
-			chainspec::OpChainSpec,
-			evm::{OpEvmConfig, OpRethReceiptBuilder},
+	rblib::{
+		alloy::optimism::consensus::OpTxEnvelope,
+		reth::{
+			api::{FullNodeTypes, NodeTypes, PrimitivesTy, TxTy},
+			builder::{BuilderContext, components::NetworkBuilder},
+			eth_wire_types::NetPrimitivesFor,
+			ethereum::network::api::FullNetwork,
+			network::{NetworkProtocols, protocol::IntoRlpxSubProtocol},
+			optimism::{
+				chainspec::OpChainSpec,
+				evm::{OpEvmConfig, OpRethReceiptBuilder},
+				txpool::OpPooledTx,
+			},
+			primitives::Header,
+			provider::{HeaderProvider, StateProviderFactory},
+			transaction_pool::{PoolTransaction, TransactionPool},
 		},
-		primitives::Header,
-		provider::{HeaderProvider, StateProviderFactory},
-		transaction_pool::{PoolTransaction, TransactionPool},
 	},
 };
 
@@ -44,8 +48,9 @@ where
 	T: NetworkBuilder<Node, Pool, Network = Network>,
 	Node: FullNodeTypes<Types: NodeTypes<ChainSpec = OpChainSpec>>,
 	Node::Provider: StateProviderFactory + HeaderProvider<Header = Header>,
-	Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
-		+ Unpin
+	Pool: TransactionPool<
+			Transaction: PoolTransaction<Consensus = OpTxEnvelope> + OpPooledTx,
+		> + Unpin
 		+ 'static,
 	Network: NetworkProtocols
 		+ FullNetwork<Primitives: NetPrimitivesFor<PrimitivesTy<Node::Types>>>,
