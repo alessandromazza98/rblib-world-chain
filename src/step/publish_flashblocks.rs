@@ -69,11 +69,11 @@ use {
 			revm::DatabaseRef,
 			rpc::types::Withdrawals,
 		},
-		revm::database::BundleState,
+		revm::database::{BundleState, states::reverts::Reverts},
 	},
 	reth_chain_state::ExecutedBlock,
 	reth_optimism_consensus::{calculate_receipt_root_no_memo_optimism, isthmus},
-	std::{sync::Arc, time::Instant},
+	std::{collections::HashSet, sync::Arc, time::Instant},
 };
 
 /// Flashblocks pipeline step for publishing flashblocks to external
@@ -401,6 +401,24 @@ impl PublishFlashblock {
 		let logs_bloom = logs_bloom(receipts.iter().flat_map(|r| r.logs()));
 		// TODO: make the following vars depend on hard forks (and thus chain spec)
 		let requests_hash = Some(EMPTY_REQUESTS_HASH);
+		// flatten reverts into a single reverts as the bundle is re-used across
+		// multiple payloads which represent a single atomic state transition.
+		// therefore reverts should have length 1 we only retain the first
+		// occurance of a revert for any given account.
+		let mut visited = HashSet::new();
+		let flattened = bundle_state
+			.reverts
+			.iter()
+			.flatten()
+			.filter_map(|(acc, revert)| {
+				if visited.insert(acc) {
+					Some((*acc, revert.clone()))
+				} else {
+					None
+				}
+			})
+			.collect();
+		bundle_state.reverts = Reverts::new(vec![flattened]);
 		// withdrawals root field in block header is used for storage root of L2
 		// predeploy `l2tol1-message-passer`
 		let withdrawals_root = Some(
