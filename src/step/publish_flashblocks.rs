@@ -29,11 +29,16 @@ use {
 				Receipt,
 				Transaction,
 				TxReceipt,
+				constants::EMPTY_WITHDRAWALS,
 				proofs,
 			},
-			eips::{Encodable2718, merge::BEACON_NONCE},
+			eips::{
+				Encodable2718,
+				eip7685::EMPTY_REQUESTS_HASH,
+				merge::BEACON_NONCE,
+			},
 			optimism::consensus::{OpDepositReceipt, OpTxEnvelope},
-			primitives::{B256, U256},
+			primitives::U256,
 		},
 		prelude::{
 			BlockExt,
@@ -62,11 +67,12 @@ use {
 			primitives::{Header, Recovered, RecoveredBlock, logs_bloom},
 			provider::ExecutionOutcome,
 			revm::DatabaseRef,
+			rpc::types::Withdrawals,
 		},
 		revm::database::BundleState,
 	},
 	reth_chain_state::ExecutedBlock,
-	reth_optimism_consensus::calculate_receipt_root_no_memo_optimism,
+	reth_optimism_consensus::{calculate_receipt_root_no_memo_optimism, isthmus},
 	std::{sync::Arc, time::Instant},
 };
 
@@ -263,22 +269,22 @@ impl PublishFlashblock {
 	) -> Result<OpBuiltPayload, BlockExecutionError> {
 		let chain_spec = payload.block().chainspec();
 		let timestamp = payload.block().timestamp();
-		let (
-			mut bundle_state,
-			mut receipts,
-			mut total_fees,
-			mut cumulative_gas_used,
-		) = match payload.latest_barrier() {
+		let mut bundle_state = payload.block().base_bundle_state();
+		tracing::info!("initial bundle state: {:?}", bundle_state);
+		let (mut receipts, mut total_fees, mut cumulative_gas_used) = match payload
+			.latest_barrier()
+		{
 			Some(payload) => {
 				if let Some(op_built_payload) = &payload.context().maybe_built_payload {
 					// safe unwraps because we always build payloads with the execution
 					// outcome
-					let bundle_state = op_built_payload
+					let exec_bundle_state = op_built_payload
 						.executed_block()
 						.unwrap()
 						.execution_output
 						.bundle
 						.clone();
+					bundle_state.extend(exec_bundle_state);
 					// we alwyas build a op built payload with just one block, so
 					// we can just take the first index
 					debug_assert_eq!(
@@ -300,12 +306,12 @@ impl PublishFlashblock {
 						.clone();
 					let total_fees = op_built_payload.fees();
 					let cumulative_gas_used = op_built_payload.block().gas_used();
-					(bundle_state, receipts, total_fees, cumulative_gas_used)
+					(receipts, total_fees, cumulative_gas_used)
 				} else {
-					(BundleState::default(), vec![], U256::ZERO, 0)
+					(vec![], U256::ZERO, 0)
 				}
 			}
-			None => (BundleState::default(), vec![], U256::ZERO, 0),
+			None => (vec![], U256::ZERO, 0),
 		};
 
 		let base_fee = payload.block().base_fee();
@@ -338,12 +344,19 @@ impl PublishFlashblock {
 									logs: result.into_logs(),
 								};
 
-								let depositor = checkpoint
-									.basic_ref(tx.signer())
-									.map_err(BlockExecutionError::other)?;
+								let deposit_nonce = match checkpoint.prev() {
+									Some(prev_checkpoint) => prev_checkpoint
+										.basic_ref(tx.signer())
+										.map_err(BlockExecutionError::other)?
+										.map(|account| account.nonce),
+									None => ctx
+										.provider()
+										.account_nonce(tx.signer_ref())
+										.map_err(BlockExecutionError::other)?,
+								};
 								let inner = OpDepositReceipt {
 									inner: receipt,
-									deposit_nonce: depositor.map(|account| account.nonce),
+									deposit_nonce,
 									// The deposit receipt version was introduced in Canyon to
 									// indicate an update to how receipt hashes should be
 									// computed when set. The state transition process ensures
@@ -381,14 +394,21 @@ impl PublishFlashblock {
 		let txs: Vec<Recovered<OpTxEnvelope>> =
 			payload.history().transactions().cloned().collect();
 		let transactions_root = proofs::calculate_transaction_root(&txs);
+		tracing::info!("receipts: {:?}", receipts);
+		tracing::info!("timestamp: {:?}", timestamp);
 		let receipts_root =
 			calculate_receipt_root_no_memo_optimism(&receipts, chain_spec, timestamp);
 		let logs_bloom = logs_bloom(receipts.iter().flat_map(|r| r.logs()));
-		let requests_hash = None;
-		let withdrawals_root = None;
-		let excess_blob_gas = None;
-		let blob_gas_used = None;
-
+		// TODO: make the following vars depend on hard forks (and thus chain spec)
+		let requests_hash = Some(EMPTY_REQUESTS_HASH);
+		// withdrawals root field in block header is used for storage root of L2
+		// predeploy `l2tol1-message-passer`
+		let withdrawals_root = Some(
+			isthmus::withdrawals_root(&bundle_state, ctx.provider())
+				.map_err(BlockExecutionError::other)?,
+		);
+		let excess_blob_gas = Some(0);
+		let blob_gas_used = Some(0);
 		let hashed_state = ctx.provider().hashed_post_state(&bundle_state);
 		let (state_root, trie_updates) = ctx
 			.provider()
@@ -432,7 +452,7 @@ impl PublishFlashblock {
 		let block = Block::new(header, BlockBody {
 			transactions,
 			ommers: Default::default(),
-			withdrawals: None,
+			withdrawals: Some(Withdrawals::default()), // empty withdrawals
 		});
 		let block = RecoveredBlock::new_unhashed(block, senders);
 		let sealed_block = Arc::new(block.sealed_block().clone());
