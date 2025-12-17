@@ -44,7 +44,7 @@ fn main() {
 			let pool = OrderPool::<WorldChain>::default();
 			// Create the node
 			let config = args.into_config()?;
-			let node = FlashblocksNode::new(config.clone());
+			let node = FlashblocksNode::new(config);
 			// Create add ons using the builder so the type is decoupled from
 			// the original ComponentsBuilder (which changes after attach_pool).
 			let add_ons: OpAddOns<
