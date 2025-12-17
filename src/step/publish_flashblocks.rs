@@ -73,7 +73,7 @@ use {
 	reth_chain_state::ExecutedBlock,
 	reth_optimism_consensus::{calculate_receipt_root_no_memo_optimism, isthmus},
 	std::{
-		collections::{HashMap, HashSet, hash_map::Entry},
+		collections::{HashMap, hash_map::Entry},
 		sync::Arc,
 		time::Instant,
 	},

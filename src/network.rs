@@ -7,7 +7,7 @@ use {
 	rblib::{
 		alloy::optimism::consensus::OpTxEnvelope,
 		reth::{
-			api::{FullNodeTypes, NodeTypes, PrimitivesTy, TxTy},
+			api::{FullNodeTypes, NodeTypes, PrimitivesTy},
 			builder::{BuilderContext, components::NetworkBuilder},
 			eth_wire_types::NetPrimitivesFor,
 			ethereum::network::api::FullNetwork,
