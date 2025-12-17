@@ -126,6 +126,28 @@ impl FlashblocksStateExecutor {
 		Ok(())
 	}
 
+	/// Registers a new broadcast channel for built payloads.
+	pub fn register_payload_events(
+		&self,
+		tx: broadcast::Sender<Events<OpEngineTypes>>,
+	) {
+		self.inner.write().payload_events = Some(tx);
+	}
+
+	/// Broadcasts a new payload to cache in the in memory tree.
+	pub fn broadcast_payload(
+		&self,
+		event: Events<OpEngineTypes>,
+		payload_events: Option<broadcast::Sender<Events<OpEngineTypes>>>,
+	) -> eyre::Result<()> {
+		if let Some(payload_events) = payload_events {
+			if let Err(e) = payload_events.send(event) {
+				tracing::error!("error broadcasting payload: {e:?}");
+			}
+		}
+		Ok(())
+	}
+
 	/// Returns a reference to the latest flashblock.
 	pub fn last(&self) -> Flashblock {
 		self.inner.read().flashblocks.last().clone()
@@ -337,11 +359,10 @@ where
 	*latest_payload = Some((payload.clone(), index));
 	pending_block.send_replace(payload.executed_block());
 
-	// TODO: uncomment this👇
-	// state_executor.broadcast_payload(
-	// 	Events::BuiltPayload(payload.clone()),
-	// 	payload_events.clone(),
-	// )?;
+	state_executor.broadcast_payload(
+		Events::BuiltPayload(payload.clone()),
+		payload_events.clone(),
+	)?;
 
 	Ok(())
 }
