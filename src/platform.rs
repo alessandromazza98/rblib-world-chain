@@ -75,21 +75,11 @@ impl Platform for WorldChain {
 	where
 		P: PlatformExecCtxBounds<Self>,
 	{
-		tracing::info!(
-			"we're entering the build_payload fn of world-chain platform",
-		);
-		let vanilla_built_payload = op_build_payload(payload.clone(), provider)?;
-		tracing::warn!("vanilla built payload: {:?}", vanilla_built_payload);
 		if let Some(latest_barrier) = payload.latest_barrier() {
 			// clone is cheap because it's mostly Arc
 			if let Some(built_payload) =
 				latest_barrier.context().maybe_built_payload.clone()
 			{
-				tracing::info!(
-					"we already have a built payload, we don't need to re-execute \
-					 anything!",
-				);
-				tracing::warn!("my built payload: {:?}", built_payload);
 				return Ok(built_payload);
 			}
 		}
