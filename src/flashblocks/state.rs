@@ -5,6 +5,7 @@ use {
 		p2p::FlashblocksHandle,
 		primitives::{Flashblock, Flashblocks, FlashblocksPayloadV1},
 	},
+	backon::{BlockingRetryable, ExponentialBuilder},
 	eyre::OptionExt,
 	futures::StreamExt,
 	parking_lot::RwLock,
@@ -12,6 +13,7 @@ use {
 		alloy::{
 			eips::{Decodable2718, eip2718::WithEncoded},
 			optimism::consensus::{OpTxEnvelope, encode_holocene_extra_data},
+			primitives::BlockHash,
 		},
 		reth::{
 			api::{Events, FullNodeTypes, NodeTypes},
@@ -35,7 +37,7 @@ use {
 				builder::{BuildOutcomeKind, PayloadConfig},
 				util::BestPayloadTransactions,
 			},
-			primitives::Header,
+			primitives::{Header, SealedHeader},
 			provider::{ChainSpecProvider, HeaderProvider, StateProviderFactory},
 			revm::{cancelled::CancelOnDrop, database::StateProviderDatabase},
 			rpc::types::Withdrawals,
@@ -47,7 +49,7 @@ use {
 		},
 	},
 	reth_chain_state::ExecutedBlock,
-	std::sync::Arc,
+	std::{sync::Arc, time::Duration},
 	tokio::sync::broadcast,
 };
 
@@ -310,9 +312,15 @@ where
 		min_base_fee: None,
 	};
 
-	let sealed_header = provider
-		.sealed_header_by_hash(base.parent_hash)?
-		.ok_or_eyre(format!("missing sealed header: {}", base.parent_hash))?;
+	let sealed_header = (|| fetch_header(provider, base.parent_hash))
+		.retry(
+			ExponentialBuilder::default()
+				.with_min_delay(Duration::from_millis(MIN_BACKOFF_DELAY))
+				.with_max_delay(Duration::from_millis(MAX_BACKOFF_DELAY))
+				.without_max_times(),
+		)
+		.sleep(std::thread::sleep)
+		.call()?;
 
 	let state_provider = provider.state_by_block_hash(base.parent_hash)?;
 
@@ -365,4 +373,17 @@ where
 	)?;
 
 	Ok(())
+}
+
+const MIN_BACKOFF_DELAY: u64 = 20;
+const MAX_BACKOFF_DELAY: u64 = 200;
+
+/// Fetch the sealed header of the provided block hash.
+fn fetch_header<P: HeaderProvider<Header = Header>>(
+	provider: &P,
+	block_hash: BlockHash,
+) -> eyre::Result<SealedHeader> {
+	provider
+		.sealed_header_by_hash(block_hash)?
+		.ok_or_eyre(format!("missing sealed header: {}", block_hash))
 }
