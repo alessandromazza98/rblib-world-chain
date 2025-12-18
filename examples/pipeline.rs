@@ -8,6 +8,7 @@ use {
 			Minus,
 			Pipeline,
 			PipelineBuilderExt,
+			PipelineServiceBuilder,
 			Scaled,
 			types,
 		},
@@ -27,6 +28,7 @@ use {
 		PublishFlashblock,
 		WorldChain,
 		WorldChainArgs,
+		WorldChainServiceBuilder,
 	},
 };
 
@@ -75,13 +77,18 @@ fn main() {
 						.with_step(BreakAfterDeadline)
 						.with_limits(Scaled::default().deadline(total_building_time)),
 				);
+			// Create the wrapper payload service builder
+			let world_service_builder = WorldChainServiceBuilder::new(
+				PipelineServiceBuilder::new(pipeline),
+				node.flashblocks_state().unwrap(),
+			);
 			let handle = builder
 				.with_types::<FlashblocksNode>()
 				.with_components(
 					node
 						.components_builder()
 						.attach_pool(&pool)
-						.payload(pipeline.into_service()),
+						.payload(world_service_builder),
 				)
 				.with_add_ons(add_ons)
 				.launch()

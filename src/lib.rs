@@ -4,6 +4,7 @@ mod flashblocks;
 mod limits;
 mod network;
 mod node;
+mod payload;
 mod platform;
 mod step;
 
@@ -12,6 +13,7 @@ pub use {
 	config::{WorldChainArgs, WorldChainNodeConfig},
 	limits::FlashblockLimits,
 	node::FlashblocksNode,
+	payload::WorldChainServiceBuilder,
 	platform::WorldChain,
 	step::{
 		optimism_prologue::OptimismPrologue,
