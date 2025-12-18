@@ -265,6 +265,9 @@ impl Step<WorldChain> for PublishFlashblock {
 }
 
 impl PublishFlashblock {
+	/// Create a op built payload from the provided checkpoint. If there is an
+	/// already built payload in a previous checkpoint barrier, then use it as a
+	/// pre-state for this new payload that will be built.
 	fn build_op_built_payload(
 		&self,
 		payload: &Checkpoint<WorldChain>,
@@ -272,23 +275,23 @@ impl PublishFlashblock {
 	) -> Result<OpBuiltPayload, BlockExecutionError> {
 		let chain_spec = payload.block().chainspec();
 		let timestamp = payload.block().timestamp();
-		let mut bundle_state = payload.block().base_bundle_state();
-		tracing::info!("initial bundle state: {:?}", bundle_state);
-		let (mut receipts, mut total_fees, mut cumulative_gas_used) = match payload
-			.latest_barrier()
-		{
+		let (
+			mut bundle_state,
+			mut receipts,
+			mut total_fees,
+			mut cumulative_gas_used,
+		) = match payload.latest_barrier() {
 			Some(payload) => {
 				if let Some(op_built_payload) = &payload.context().maybe_built_payload {
-					// safe unwraps because we always build payloads with the execution
+					// Safe unwraps because we always build payloads with the execution
 					// outcome
-					let exec_bundle_state = op_built_payload
+					let bundle_state = op_built_payload
 						.executed_block()
 						.unwrap()
 						.execution_output
 						.bundle
 						.clone();
-					bundle_state.extend(exec_bundle_state);
-					// we alwyas build a op built payload with just one block, so
+					// We alwyas build a op built payload with just one block, so
 					// we can just take the first index
 					debug_assert_eq!(
 						op_built_payload
@@ -309,12 +312,20 @@ impl PublishFlashblock {
 						.clone();
 					let total_fees = op_built_payload.fees();
 					let cumulative_gas_used = op_built_payload.block().gas_used();
-					(receipts, total_fees, cumulative_gas_used)
+					(bundle_state, receipts, total_fees, cumulative_gas_used)
 				} else {
-					(vec![], U256::ZERO, 0)
+					// There are no previous op built payload. This is the first
+					// flashblock for this payload id.
+					let bundle_state = payload.block().base_bundle_state();
+					(bundle_state, vec![], U256::ZERO, 0)
 				}
 			}
-			None => (vec![], U256::ZERO, 0),
+			None => {
+				// There are no previous op built payload. This is the first
+				// flashblock for this payload id.
+				let bundle_state = payload.block().base_bundle_state();
+				(bundle_state, vec![], U256::ZERO, 0)
+			}
 		};
 
 		let base_fee = payload.block().base_fee();
@@ -402,8 +413,6 @@ impl PublishFlashblock {
 		let receipts_root =
 			calculate_receipt_root_no_memo_optimism(&receipts, chain_spec, timestamp);
 		let logs_bloom = logs_bloom(receipts.iter().flat_map(|r| r.logs()));
-		// TODO: make the following vars depend on hard forks (and thus chain spec)
-		let requests_hash = Some(EMPTY_REQUESTS_HASH);
 		// Flatten reverts into a single transition:
 		// - per account: keep earliest `previous_status`
 		// - per account: keep earliest non-`DoNothing` account-info revert
@@ -415,6 +424,8 @@ impl PublishFlashblock {
 		// even if we built multiple payloads.
 		let flattened = flatten_reverts(&bundle_state.reverts);
 		bundle_state.reverts = flattened;
+		// TODO: make the following vars depend on hard forks (and thus chain spec)
+		let requests_hash = Some(EMPTY_REQUESTS_HASH);
 		// withdrawals root field in block header is used for storage root of L2
 		// predeploy `l2tol1-message-passer`
 		let withdrawals_root = Some(
