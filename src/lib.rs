@@ -15,9 +15,5 @@ pub use {
 	node::FlashblocksNode,
 	payload::WorldChainServiceBuilder,
 	platform::WorldChain,
-	step::{
-		optimism_prologue::OptimismPrologue,
-		pre_state::FetchPreState,
-		publish_flashblocks::PublishFlashblock,
-	},
+	step::publish_flashblocks::PublishFlashblock,
 };
