@@ -104,6 +104,11 @@ impl FlashblocksStateExecutor {
 		}
 	}
 
+	/// Publishes a newly built payload to the P2P network and updates internal
+	/// state.
+	///
+	/// This method is called when this node has built a new flashblock that
+	/// should be broadcast to peers.
 	pub fn publish_built_payload(
 		&self,
 		payload: FlashblocksPayloadV1,
@@ -117,13 +122,14 @@ impl FlashblocksStateExecutor {
 
 		let index = payload.index;
 		let flashblock = Flashblock {
-			flashblock: payload.clone(),
+			flashblock: payload,
 		};
 		flashblocks.push(flashblock.clone())?;
 
 		*latest_payload = Some((built_payload, index));
 
-		self.p2p_handle.publish_new(payload);
+		// Broadcast to P2P network using the flashblock's inner payload
+		self.p2p_handle.publish_new(flashblock.into_flashblock());
 
 		Ok(())
 	}
@@ -221,6 +227,15 @@ impl FlashblocksStateExecutor {
 	}
 }
 
+/// Processes a received flashblock: validates it, builds the payload, and
+/// updates state.
+///
+/// # Processing Steps
+/// 1. Check if flashblock was already processed (skip if so)
+/// 2. Determine if this is a new payload or continuation of existing one
+/// 3. Decode and validate transactions from the flashblock
+/// 4. Build the payload using the flashblock builder
+/// 5. Update internal state and broadcast the result
 #[expect(clippy::too_many_arguments)]
 fn process_flashblock<Provider, Pool>(
 	provider: &Provider,

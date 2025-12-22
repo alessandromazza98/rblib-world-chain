@@ -7,9 +7,7 @@ use {
 	rblib::reth::{
 		api::{FullNodeTypes, NodeTypes},
 		builder::{
-			Node,
-			NodeAdapter,
-			NodeComponentsBuilder,
+			Node, NodeAdapter, NodeComponentsBuilder,
 			components::{BasicPayloadServiceBuilder, ComponentsBuilder},
 			rpc::BasicEngineValidatorBuilder,
 		},
@@ -17,19 +15,10 @@ use {
 		optimism::{
 			chainspec::OpChainSpec,
 			node::{
-				OpAddOns,
-				OpAddOnsBuilder,
-				OpConsensusBuilder,
-				OpEngineApiBuilder,
-				OpEngineTypes,
-				OpEngineValidatorBuilder,
-				OpExecutorBuilder,
-				OpNetworkBuilder,
-				OpPoolBuilder,
-				OpStorage,
-				args::RollupArgs,
-				node::OpPayloadBuilder,
-				payload::config::OpBuilderConfig,
+				OpAddOns, OpAddOnsBuilder, OpConsensusBuilder, OpEngineApiBuilder,
+				OpEngineTypes, OpEngineValidatorBuilder, OpExecutorBuilder,
+				OpNetworkBuilder, OpPoolBuilder, OpStorage, args::RollupArgs,
+				node::OpPayloadBuilder, payload::config::OpBuilderConfig,
 			},
 			primitives::OpPrimitives,
 			rpc::OpEthApiBuilder,
@@ -130,12 +119,8 @@ where
 			..
 		} = rollup;
 		let inner = OpNetworkBuilder::new(disable_txpool_gossip, !discovery_v4);
-		let fb_network_builder = FlashblocksNetworkBuilder::new(
-			inner,
-			flashblocks_state
-				.as_ref()
-				.map(|flashhblocks_state| flashhblocks_state.clone()),
-		);
+		let fb_network_builder =
+			FlashblocksNetworkBuilder::new(inner, flashblocks_state.clone());
 		ComponentsBuilder::default()
 			.node_types::<N>()
 			.pool(OpPoolBuilder::default())

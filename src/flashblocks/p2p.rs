@@ -230,6 +230,14 @@ impl FlashblocksHandle {
 }
 
 impl FlashblocksP2PCtx {
+	/// Publishes a flashblock to all connected peers and updates internal state.
+	///
+	/// # Processing Steps
+	/// 1. Reset state if this is a new payload (different payload_id)
+	/// 2. Validate the flashblock index is within bounds
+	/// 3. Cache the flashblock if not already seen
+	/// 4. Encode and broadcast to peers
+	/// 5. Emit any consecutive flashblocks that are now ready for consumption
 	pub fn publish(
 		&self,
 		state: &mut FlashblocksP2PState,
@@ -237,17 +245,18 @@ impl FlashblocksP2PCtx {
 	) {
 		let payload_index = payload.index;
 		let payload_id = payload.payload_id;
-		// Check if this is a globally new payload
-		// TODO: fix the unwrap
+
+		// Step 1: Check if this is a new payload (different block). If so, reset
+		// state to start tracking the new payload's flashblocks.
 		if payload_id != state.payload_id {
 			state.payload_id = payload_id;
 			state.payload_timestamp =
-				payload.metadata.flashblock_timestamp.unwrap() as u64;
+				payload.metadata.flashblock_timestamp.unwrap_or_default() as u64;
 			state.flashblock_index = 0;
 			state.flashblocks.fill(None);
 		}
 
-		// Resize our array if needed
+		// Step 2: Validate flashblock index is within acceptable bounds
 		if payload_index as usize > MAX_FLASHBLOCK_INDEX {
 			tracing::error!(
 					target: "flashblocks::p2p",
@@ -257,77 +266,80 @@ impl FlashblocksP2PCtx {
 			);
 			return;
 		}
-		let len = state.flashblocks.len();
-		state
-			.flashblocks
-			.resize_with(len.max(payload_index as usize + 1), || None);
-		let flashblock = &mut state.flashblocks[payload_index as usize];
 
-		// If we've already seen this index, skip it
-		// Otherwise, add it to the list
-		if flashblock.is_none() {
-			// We haven't seen this index yet
-			// Add the flashblock to our cache
+		// Ensure the flashblocks buffer is large enough
+		let required_len = payload_index as usize + 1;
+		if state.flashblocks.len() < required_len {
+			state.flashblocks.resize_with(required_len, || None);
+		}
 
-			*flashblock = Some(payload.clone());
-			tracing::trace!(
+		// Step 3: Skip if we've already cached this flashblock index
+		if state.flashblocks[payload_index as usize].is_some() {
+			return;
+		}
+
+		// Cache the flashblock
+		state.flashblocks[payload_index as usize] = Some(payload.clone());
+		tracing::trace!(
+				target: "flashblocks::p2p",
+				payload_id = %payload.payload_id,
+				flashblock_index = payload_index,
+				"queueing flashblock",
+		);
+
+		// Step 4: Encode and broadcast to peers
+		let p2p_msg = FlashblocksP2PMsg::FlashblocksPayloadV1(payload);
+		let mut bytes = BytesMut::new();
+		p2p_msg.encode(&mut bytes);
+		let msg_len = bytes.len();
+
+		if msg_len > MAX_FRAME {
+			tracing::error!(
 					target: "flashblocks::p2p",
-					payload_id = %payload.payload_id,
-					flashblock_index = payload_index,
-					"queueing flashblock",
+					size = msg_len,
+					max_size = MAX_FRAME,
+					"FlashblocksP2PMsg too large",
 			);
+			return;
+		}
+		if msg_len > MAX_FRAME / 2 {
+			tracing::warn!(
+					target: "flashblocks::p2p",
+					size = msg_len,
+					max_size = MAX_FRAME,
+					"FlashblocksP2PMsg almost too large",
+			);
+		}
 
-			let p2p_msg = FlashblocksP2PMsg::FlashblocksPayloadV1(payload);
-			let mut bytes = BytesMut::new();
-			p2p_msg.encode(&mut bytes);
-			let len = bytes.len();
+		let peer_msg = PeerMsg::FlashblocksPayloadV1((
+			payload_id,
+			payload_index as usize,
+			bytes,
+		));
 
-			if len > MAX_FRAME {
-				tracing::error!(
-						target: "flashblocks::p2p",
-						size = bytes.len(),
-						max_size = MAX_FRAME,
-						"FlashblocksP2PMsg too large",
-				);
-				return;
+		self.peer_tx.send(peer_msg).ok();
+
+		let now = Utc::now()
+			.timestamp_nanos_opt()
+			.expect("time went backwards");
+
+		// Step 5: Emit consecutive flashblocks to the flashblock stream.
+		// We maintain strict ordering: only emit flashblocks when all previous
+		// ones have been received.
+		while let Some(Some(flashblock_event)) =
+			state.flashblocks.get(state.flashblock_index)
+		{
+			// Publish the flashblock
+			self.flashblock_tx.send(flashblock_event.clone()).ok();
+
+			// Don't measure the interval at the block boundary
+			if state.flashblock_index != 0 {
+				let _interval = now - state.flashblock_timestamp;
 			}
-			if len > MAX_FRAME / 2 {
-				tracing::warn!(
-						target: "flashblocks::p2p",
-						size = bytes.len(),
-						max_size = MAX_FRAME,
-						"FlashblocksP2PMsg almost too large",
-				);
-			}
 
-			let peer_msg = PeerMsg::FlashblocksPayloadV1((
-				payload_id,
-				payload_index as usize,
-				bytes,
-			));
-
-			self.peer_tx.send(peer_msg).ok();
-
-			let now = Utc::now()
-				.timestamp_nanos_opt()
-				.expect("time went backwards");
-
-			// Broadcast any flashblocks in the cache that are in order
-			while let Some(Some(flashblock_event)) =
-				state.flashblocks.get(state.flashblock_index)
-			{
-				// Publish the flashblock
-				self.flashblock_tx.send(flashblock_event.clone()).ok();
-
-				// Don't measure the interval at the block boundary
-				if state.flashblock_index != 0 {
-					let _interval = now - state.flashblock_timestamp;
-				}
-
-				// Update the index and timestamp
-				state.flashblock_timestamp = now;
-				state.flashblock_index += 1;
-			}
+			// Update the index and timestamp
+			state.flashblock_timestamp = now;
+			state.flashblock_index += 1;
 		}
 	}
 }

@@ -173,6 +173,13 @@ impl<N: Peers + Unpin> Stream for FlashblocksConnection<N> {
 }
 
 impl<N: Peers> FlashblocksConnection<N> {
+	/// Handles an incoming FlashblocksPayloadV1 message from a peer.
+	///
+	/// # Validation Steps
+	/// 1. Track payload transitions (reset state for new payloads)
+	/// 2. Validate index is within bounds
+	/// 3. Detect and penalize duplicate messages from the same peer
+	/// 4. Forward valid messages to the protocol handler
 	fn handle_flashblocks_payload_v1(&mut self, payload: FlashblocksPayloadV1) {
 		let mut state = self.protocol.handle.state.lock();
 
@@ -182,7 +189,7 @@ impl<N: Peers> FlashblocksConnection<N> {
 			self.received.fill(false);
 		}
 
-		// Check if the payload index is within the allowed range
+		// Validate index bounds to prevent memory exhaustion attacks
 		if payload.index as usize > MAX_FLASHBLOCK_INDEX {
 			tracing::error!(
 					target: "flashblocks::p2p",
@@ -195,14 +202,14 @@ impl<N: Peers> FlashblocksConnection<N> {
 			return;
 		}
 
-		// Check if this peer is spamming us with the same payload index
-		let len = self.received.len();
-		self
-			.received
-			.resize_with(len.max(payload.index as usize + 1), || false);
+		// Resize received bitmap if needed
+		let required_len = payload.index as usize + 1;
+		if self.received.len() < required_len {
+			self.received.resize(required_len, false);
+		}
+
+		// Detect duplicate messages (potential DoS attempt)
 		if self.received[payload.index as usize] {
-			// We've already seen this index from this peer.
-			// They could be trying to DOS us.
 			tracing::warn!(
 					target: "flashblocks::p2p",
 					peer_id = %self.peer_id,

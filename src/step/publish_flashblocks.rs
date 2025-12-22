@@ -59,6 +59,7 @@ use {
 		},
 		reth::{
 			errors::BlockExecutionError,
+			evm::op_revm::OpHaltReason,
 			optimism::{
 				forks::OpHardforks,
 				node::OpBuiltPayload,
@@ -67,10 +68,13 @@ use {
 			payload::{BuiltPayload, PayloadBuilderAttributes},
 			primitives::{Header, Recovered, RecoveredBlock, logs_bloom},
 			provider::ExecutionOutcome,
-			revm::DatabaseRef,
+			revm::{DatabaseRef, context::result::ExecutionResult},
 			rpc::types::Withdrawals,
 		},
-		revm::database::states::reverts::{AccountInfoRevert, Reverts},
+		revm::database::{
+			BundleState,
+			states::reverts::{AccountInfoRevert, Reverts},
+		},
 	},
 	reth_chain_state::ExecutedBlock,
 	reth_optimism_consensus::{calculate_receipt_root_no_memo_optimism, isthmus},
@@ -267,7 +271,7 @@ impl Step<WorldChain> for PublishFlashblock {
 }
 
 impl PublishFlashblock {
-	/// Create a op built payload from the provided checkpoint. If there is an
+	/// Creates a op built payload from the provided checkpoint. If there is an
 	/// already built payload in a previous checkpoint barrier, then use it as a
 	/// pre-state for this new payload that will be built.
 	fn build_op_built_payload(
@@ -277,132 +281,57 @@ impl PublishFlashblock {
 	) -> Result<OpBuiltPayload, BlockExecutionError> {
 		let chain_spec = payload.block().chainspec();
 		let timestamp = payload.block().timestamp();
+
+		// Initialize state from previous barrier's built payload if available,
+		// otherwise start fresh with base bundle state.
 		let (
 			mut bundle_state,
 			mut receipts,
 			mut total_fees,
 			mut cumulative_gas_used,
-		) = match payload.latest_barrier() {
-			Some(payload) => {
-				if let Some(op_built_payload) = &payload.context().maybe_built_payload {
-					// Safe unwraps because we always build payloads with the execution
-					// outcome
-					let bundle_state = op_built_payload
-						.executed_block()
-						.unwrap()
-						.execution_output
-						.bundle
-						.clone();
-					// We alwyas build a op built payload with just one block, so
-					// we can just take the first index
-					debug_assert_eq!(
-						op_built_payload
-							.executed_block()
-							.unwrap()
-							.execution_outcome()
-							.receipts
-							.len(),
-						1
-					);
-					let receipts = op_built_payload
-						.executed_block()
-						.unwrap()
-						.execution_output
-						.receipts
-						.first()
-						.unwrap()
-						.clone();
-					let total_fees = op_built_payload.fees();
-					let cumulative_gas_used = op_built_payload.block().gas_used();
-					(bundle_state, receipts, total_fees, cumulative_gas_used)
-				} else {
-					// There are no previous op built payload. This is the first
-					// flashblock for this payload id.
-					let bundle_state = payload.block().base_bundle_state();
-					(bundle_state, vec![], U256::ZERO, 0)
-				}
-			}
-			None => {
-				// There are no previous op built payload. This is the first
-				// flashblock for this payload id.
-				let bundle_state = payload.block().base_bundle_state();
-				(bundle_state, vec![], U256::ZERO, 0)
-			}
-		};
+		) = self.extract_previous_state(payload)?;
 
 		let base_fee = payload.block().base_fee();
 
 		let this_block_span = self.unpublished_payload(payload);
 
+		// Process each checkpoint in the unpublished span, accumulating state
+		// changes, receipts, and fee calculations.
 		for checkpoint in this_block_span {
-			if let Some(checkpoint_bundle_state) = checkpoint.state().cloned() {
-				bundle_state.extend(checkpoint_bundle_state);
+			let Some(checkpoint_bundle_state) = checkpoint.state().cloned() else {
+				continue;
+			};
+			bundle_state.extend(checkpoint_bundle_state);
 
-				let checkpoint_txs = checkpoint.transactions();
-				for (i, tx) in checkpoint_txs.iter().enumerate() {
-					if let Some(result) =
-						checkpoint.result().map(|res| res.results()[i].clone())
-					{
-						let gas_used = result.gas_used();
-						if !tx.is_deposit() {
-							let miner_fee = tx
-								.effective_tip_per_gas(base_fee)
-								.expect("fee is always valid; execution succeeded");
-							total_fees += U256::from(miner_fee) * U256::from(gas_used);
-						}
-						cumulative_gas_used += gas_used;
+			let checkpoint_txs = checkpoint.transactions();
+			for (i, tx) in checkpoint_txs.iter().enumerate() {
+				let Some(result) =
+					checkpoint.result().map(|res| res.results()[i].clone())
+				else {
+					continue;
+				};
 
-						let receipt = match tx.tx_type() {
-							OpTxType::Deposit => {
-								let receipt = Receipt {
-									status: Eip658Value::Eip658(result.is_success()),
-									cumulative_gas_used,
-									logs: result.into_logs(),
-								};
+				let gas_used = result.gas_used();
+				cumulative_gas_used += gas_used;
 
-								let deposit_nonce = match checkpoint.prev() {
-									Some(prev_checkpoint) => prev_checkpoint
-										.basic_ref(tx.signer())
-										.map_err(BlockExecutionError::other)?
-										.map(|account| account.nonce),
-									None => ctx
-										.provider()
-										.account_nonce(tx.signer_ref())
-										.map_err(BlockExecutionError::other)?,
-								};
-								let inner = OpDepositReceipt {
-									inner: receipt,
-									deposit_nonce,
-									// The deposit receipt version was introduced in Canyon to
-									// indicate an update to how receipt hashes should be
-									// computed when set. The state transition process ensures
-									// this is only set for post-Canyon deposit transactions.
-									deposit_receipt_version: chain_spec
-										.is_canyon_active_at_timestamp(timestamp)
-										.then_some(1),
-								};
-								OpReceipt::Deposit(inner)
-							}
-							ty => {
-								let receipt = Receipt {
-									status: Eip658Value::Eip658(result.is_success()),
-									cumulative_gas_used,
-									logs: result.into_logs(),
-								};
-
-								match ty {
-									OpTxType::Legacy => OpReceipt::Legacy(receipt),
-									OpTxType::Eip2930 => OpReceipt::Eip2930(receipt),
-									OpTxType::Eip1559 => OpReceipt::Eip1559(receipt),
-									OpTxType::Eip7702 => OpReceipt::Eip7702(receipt),
-									OpTxType::Deposit => unreachable!(),
-								}
-							}
-						};
-
-						receipts.push(receipt);
-					}
+				// Only accumulate miner fees for non-deposit transactions
+				if !tx.is_deposit() {
+					let miner_fee = tx
+						.effective_tip_per_gas(base_fee)
+						.expect("fee is always valid; execution succeeded");
+					total_fees += U256::from(miner_fee) * U256::from(gas_used);
 				}
+
+				let receipt = self.build_receipt(
+					tx,
+					result,
+					cumulative_gas_used,
+					&checkpoint,
+					ctx,
+					chain_spec.as_ref(),
+					timestamp,
+				)?;
+				receipts.push(receipt);
 			}
 		}
 
@@ -521,6 +450,102 @@ impl PublishFlashblock {
 			U256::from(total_fees),
 			Some(executed),
 		))
+	}
+
+	/// Builds an OpReceipt from a transaction execution result.
+	///
+	/// Handles the different receipt types based on transaction type (deposit vs
+	/// regular). For deposit transactions, includes deposit-specific fields like
+	/// nonce and version.
+	fn build_receipt(
+		&self,
+		tx: &Recovered<OpTxEnvelope>,
+		result: ExecutionResult<OpHaltReason>,
+		cumulative_gas_used: u64,
+		checkpoint: &Checkpoint<WorldChain>,
+		ctx: &StepContext<WorldChain>,
+		chain_spec: &impl OpHardforks,
+		timestamp: u64,
+	) -> Result<OpReceipt, BlockExecutionError> {
+		let receipt = Receipt {
+			status: Eip658Value::Eip658(result.is_success()),
+			cumulative_gas_used,
+			logs: result.into_logs(),
+		};
+
+		match tx.tx_type() {
+			OpTxType::Deposit => {
+				// For deposits, we need to look up the sender's nonce from state
+				let deposit_nonce = match checkpoint.prev() {
+					Some(prev_checkpoint) => prev_checkpoint
+						.basic_ref(tx.signer())
+						.map_err(BlockExecutionError::other)?
+						.map(|account| account.nonce),
+					None => ctx
+						.provider()
+						.account_nonce(tx.signer_ref())
+						.map_err(BlockExecutionError::other)?,
+				};
+
+				// The deposit receipt version was introduced in Canyon to indicate
+				// an update to how receipt hashes should be computed.
+				let deposit_receipt_version = chain_spec
+					.is_canyon_active_at_timestamp(timestamp)
+					.then_some(1);
+
+				Ok(OpReceipt::Deposit(OpDepositReceipt {
+					inner: receipt,
+					deposit_nonce,
+					deposit_receipt_version,
+				}))
+			}
+			OpTxType::Legacy => Ok(OpReceipt::Legacy(receipt)),
+			OpTxType::Eip2930 => Ok(OpReceipt::Eip2930(receipt)),
+			OpTxType::Eip1559 => Ok(OpReceipt::Eip1559(receipt)),
+			OpTxType::Eip7702 => Ok(OpReceipt::Eip7702(receipt)),
+		}
+	}
+
+	/// Extracts the previous execution state from the latest barrier checkpoint.
+	///
+	/// Returns a tuple of (bundle_state, receipts, total_fees,
+	/// cumulative_gas_used). If no previous built payload exists, returns fresh
+	/// initial state.
+	fn extract_previous_state(
+		&self,
+		payload: &Checkpoint<WorldChain>,
+	) -> Result<(BundleState, Vec<OpReceipt>, U256, u64), BlockExecutionError> {
+		// Check if we have a previous barrier with a built payload
+		let Some(barrier) = payload.latest_barrier() else {
+			// First flashblock for this payload id - start with base bundle state
+			return Ok((payload.block().base_bundle_state(), vec![], U256::ZERO, 0));
+		};
+
+		let Some(op_built_payload) = &barrier.context().maybe_built_payload else {
+			// Barrier exists but no built payload - start fresh
+			return Ok((payload.block().base_bundle_state(), vec![], U256::ZERO, 0));
+		};
+
+		// Extract state from the previous built payload
+		let executed_block = op_built_payload
+			.executed_block()
+			.expect("built payload must have execution outcome");
+
+		let bundle_state = executed_block.execution_output.bundle.clone();
+
+		// We always build op built payloads with exactly one block
+		debug_assert_eq!(executed_block.execution_outcome().receipts.len(), 1);
+		let receipts = executed_block
+			.execution_output
+			.receipts
+			.first()
+			.expect("receipts must have at least one block")
+			.clone();
+
+		let total_fees = op_built_payload.fees();
+		let cumulative_gas_used = op_built_payload.block().gas_used();
+
+		Ok((bundle_state, receipts, total_fees, cumulative_gas_used))
 	}
 
 	/// Returns a span that covers all payload checkpoints since the last barrier.

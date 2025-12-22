@@ -1,19 +1,13 @@
 use {
 	alloy_rlp::{
-		Decodable,
-		Encodable,
-		Header as RlpHeader,
-		RlpDecodable,
-		RlpEncodable,
+		Decodable, Encodable, Header as RlpHeader, RlpDecodable, RlpEncodable,
 	},
 	chrono::Utc,
 	eyre::{bail, eyre},
 	rblib::{
 		alloy::{
 			consensus::{
-				Block,
-				BlockHeader,
-				EMPTY_OMMER_ROOT_HASH,
+				Block, BlockHeader, EMPTY_OMMER_ROOT_HASH,
 				proofs::ordered_trie_root_with_encoder,
 			},
 			eips::{Decodable2718, Encodable2718, eip4895, merge::BEACON_NONCE},
@@ -135,30 +129,17 @@ pub struct FlashblocksPayloadV1<M = FlashblockMetadata> {
 	pub base: Option<ExecutionPayloadBaseV1>,
 }
 
+/// RLP empty string length (single byte `0x80`).
+const RLP_EMPTY_LEN: usize = 1;
+
 /// Manual RLP implementation because `PayloadId` and `serde_json::Value` are
-/// outside of alloy-rlp’s blanket impls.
+/// outside of alloy-rlp's blanket impls.
 impl<M> Encodable for FlashblocksPayloadV1<M>
 where
 	M: Serialize,
 {
 	fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
-		// ---- compute payload length
-		// -------------------------------------------------
-		let json_bytes = Bytes::from(
-			serde_json::to_vec(&self.metadata)
-				.expect("serialising `metadata` to JSON never fails"),
-		);
-
-		// encoded-len helper — empty string is one byte (`0x80`)
-		let empty_len = 1usize;
-
-		let base_len = self.base.as_ref().map(|b| b.length()).unwrap_or(empty_len);
-
-		let payload_len = self.payload_id.0.length()
-			+ self.index.length()
-			+ self.diff.length()
-			+ json_bytes.length()
-			+ base_len;
+		let (payload_len, json_bytes) = self.compute_payload_length();
 
 		RlpHeader {
 			list: true,
@@ -166,50 +147,57 @@ where
 		}
 		.encode(out);
 
-		// 1. `payload_id` – the inner `B64` already impls `Encodable`
+		// Encode fields in order:
+		// 1. payload_id – the inner B64 already impls Encodable
 		self.payload_id.0.encode(out);
-
-		// 2. `index`
+		// 2. index
 		self.index.encode(out);
-
-		// 3. `diff`
+		// 3. diff
 		self.diff.encode(out);
-
-		// 4. `metadata` (as raw JSON bytes)
+		// 4. metadata (as raw JSON bytes)
 		json_bytes.encode(out);
-
-		// 5. `base` (`Option` as “value | empty string”)
+		// 5. base (Option encoded as value or empty string)
 		if let Some(base) = &self.base {
 			base.encode(out);
 		} else {
-			// RLP encoding for empty value
 			out.put_u8(0x80);
 		}
 	}
 
 	fn length(&self) -> usize {
+		let (payload_len, _) = self.compute_payload_length();
+		RlpHeader {
+			list: true,
+			payload_length: payload_len,
+		}
+		.length()
+			+ payload_len
+	}
+}
+
+impl<M: Serialize> FlashblocksPayloadV1<M> {
+	/// Computes the RLP payload length and serialized metadata bytes.
+	///
+	/// Returns (payload_length, json_bytes) to avoid duplicate serialization.
+	fn compute_payload_length(&self) -> (usize, Bytes) {
 		let json_bytes = Bytes::from(
 			serde_json::to_vec(&self.metadata)
-				.expect("serialising `metadata` to JSON never fails"),
+				.expect("serializing `metadata` to JSON never fails"),
 		);
 
-		let empty_len = 1usize;
+		let base_len = self
+			.base
+			.as_ref()
+			.map(|b| b.length())
+			.unwrap_or(RLP_EMPTY_LEN);
 
-		let base_len = self.base.as_ref().map(|b| b.length()).unwrap_or(empty_len);
-
-		// list header length + payload length
-		let payload_length = self.payload_id.0.length()
+		let payload_len = self.payload_id.0.length()
 			+ self.index.length()
 			+ self.diff.length()
 			+ json_bytes.length()
 			+ base_len;
 
-		RlpHeader {
-			list: true,
-			payload_length,
-		}
-		.length()
-			+ payload_length
+		(payload_len, json_bytes)
 	}
 }
 
