@@ -29,6 +29,7 @@ use {
 				Receipt,
 				Transaction,
 				TxReceipt,
+				constants::EMPTY_WITHDRAWALS,
 				proofs,
 			},
 			eips::{
@@ -53,6 +54,7 @@ use {
 			SpanExt,
 			Step,
 			StepContext,
+			ext::CheckpointOpExt,
 			types,
 		},
 		reth::{
@@ -424,16 +426,34 @@ impl PublishFlashblock {
 		// even if we built multiple payloads.
 		let flattened = flatten_reverts(&bundle_state.reverts);
 		bundle_state.reverts = flattened;
-		// TODO: make the following vars depend on hard forks (and thus chain spec)
-		let requests_hash = Some(EMPTY_REQUESTS_HASH);
-		// withdrawals root field in block header is used for storage root of L2
-		// predeploy `l2tol1-message-passer`
-		let withdrawals_root = Some(
-			isthmus::withdrawals_root(&bundle_state, ctx.provider())
-				.map_err(BlockExecutionError::other)?,
-		);
-		let excess_blob_gas = Some(0);
-		let blob_gas_used = Some(0);
+		let mut requests_hash = None;
+		let withdrawals_root =
+			if chain_spec.is_isthmus_active_at_timestamp(timestamp) {
+				// always empty requests hash post isthmus
+				requests_hash = Some(EMPTY_REQUESTS_HASH);
+				// withdrawals root field in block header is used for storage root of L2
+				// predeploy `l2tol1-message-passer`
+				Some(
+					isthmus::withdrawals_root(&bundle_state, ctx.provider())
+						.map_err(BlockExecutionError::other)?,
+				)
+			} else if chain_spec.is_canyon_active_at_timestamp(timestamp) {
+				Some(EMPTY_WITHDRAWALS)
+			} else {
+				None
+			};
+		let (excess_blob_gas, blob_gas_used) = if chain_spec
+			.is_jovian_active_at_timestamp(timestamp)
+		{
+			let blob_gas_used = payload.cumulative_da_footprint().unwrap_or_default();
+			// In jovian, we're using the blob gas used field to store the current
+			// da footprint's value.
+			(Some(0), Some(blob_gas_used))
+		} else if chain_spec.is_ecotone_active_at_timestamp(timestamp) {
+			(Some(0), Some(0))
+		} else {
+			(None, None)
+		};
 		let hashed_state = ctx.provider().hashed_post_state(&bundle_state);
 		let (state_root, trie_updates) = ctx
 			.provider()
