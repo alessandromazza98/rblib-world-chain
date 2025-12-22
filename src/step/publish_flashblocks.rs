@@ -153,7 +153,7 @@ impl Step<WorldChain> for PublishFlashblock {
 			state_root: block.state_root(),
 			receipts_root: block.receipts_root(),
 			logs_bloom: block.logs_bloom(),
-			gas_used: payload.cumulative_gas_used(),
+			gas_used: block.gas_used(),
 			block_hash: block.hash(),
 			transactions,
 			withdrawals: vec![],
