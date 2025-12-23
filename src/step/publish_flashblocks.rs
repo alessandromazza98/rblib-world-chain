@@ -712,7 +712,7 @@ impl Times {
 ///   revert.
 /// - For each account+slot, keep the **earliest** `RevertToSlot`.
 /// - For each account, OR `wipe_storage`.
-fn flatten_reverts(reverts: &Reverts) -> Reverts {
+pub(crate) fn flatten_reverts(reverts: &Reverts) -> Reverts {
 	let mut per_account = HashMap::new();
 
 	for (addr, acc_revert) in reverts.iter().flatten() {

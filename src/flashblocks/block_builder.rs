@@ -1,7 +1,10 @@
 use {
-	crate::flashblocks::block_executor::{
-		FlashblocksBlockExecutor,
-		FlashblocksBlockExecutorFactory,
+	crate::{
+		flashblocks::block_executor::{
+			FlashblocksBlockExecutor,
+			FlashblocksBlockExecutorFactory,
+		},
+		step::publish_flashblocks::flatten_reverts,
 	},
 	alloy_op_evm::block::OpTxEnv,
 	rblib::{
@@ -127,25 +130,17 @@ where
 		// merge all transitions into bundle state
 		db.merge_transitions(BundleRetention::Reverts);
 
-		// flatten reverts into a single reverts as the bundle is re-used across
-		// multiple payloads which represent a single atomic state transition.
-		// therefore reverts should have length 1 we only retain the first
-		// occurance of a revert for any given account.
-		let flattened = db
-			.bundle_state
-			.reverts
-			.iter()
-			.flatten()
-			.scan(HashSet::new(), |visited, (acc, revert)| {
-				if visited.insert(acc) {
-					Some((*acc, revert.clone()))
-				} else {
-					None
-				}
-			})
-			.collect();
-
-		db.bundle_state.reverts = Reverts::new(vec![flattened]);
+		// Flatten reverts into a single transition:
+		// - per account: keep earliest `previous_status`
+		// - per account: keep earliest non-`DoNothing` account-info revert
+		// - per account+slot: keep earliest revert-to value
+		// - per account: OR `wipe_storage`
+		//
+		// This keeps `bundle_state.reverts.len() == 1`, which matches the
+		// expectation that this bundle represents a single block worth of changes
+		// even if we built multiple payloads.
+		let flattened = flatten_reverts(&db.bundle_state.reverts);
+		db.bundle_state.reverts = flattened;
 
 		// calculate the state root
 		let hashed_state = state.hashed_post_state(&db.bundle_state);
