@@ -38,7 +38,8 @@ use {
 				merge::BEACON_NONCE,
 			},
 			optimism::consensus::{OpDepositReceipt, OpTxEnvelope},
-			primitives::U256,
+			primitives::{B256, U256},
+			signers::Either,
 		},
 		prelude::{
 			BlockExt,
@@ -58,12 +59,13 @@ use {
 			types,
 		},
 		reth::{
+			api::BuiltPayloadExecutedBlock,
 			errors::BlockExecutionError,
 			evm::op_revm::OpHaltReason,
 			optimism::{
 				forks::OpHardforks,
 				node::OpBuiltPayload,
-				primitives::{OpPrimitives, OpReceipt, OpTxType},
+				primitives::{OpReceipt, OpTxType},
 			},
 			payload::{BuiltPayload, PayloadBuilderAttributes},
 			primitives::{Header, Recovered, RecoveredBlock, logs_bloom},
@@ -76,7 +78,6 @@ use {
 			states::reverts::{AccountInfoRevert, Reverts},
 		},
 	},
-	reth_chain_state::ExecutedBlock,
 	reth_optimism_consensus::{calculate_receipt_root_no_memo_optimism, isthmus},
 	std::{
 		collections::{HashMap, hash_map::Entry},
@@ -419,6 +420,7 @@ impl PublishFlashblock {
 			blob_gas_used,
 			excess_blob_gas,
 			requests_hash,
+			block_access_list_hash: Some(B256::ZERO), // TODO: change it
 		};
 
 		let (transactions, senders) =
@@ -427,6 +429,7 @@ impl PublishFlashblock {
 			transactions,
 			ommers: Default::default(),
 			withdrawals: Some(Withdrawals::default()), // empty withdrawals
+			block_access_list: None,                   // TODO: change it
 		});
 		let block = RecoveredBlock::new_unhashed(block, senders);
 		let sealed_block = Arc::new(block.sealed_block().clone());
@@ -437,11 +440,12 @@ impl PublishFlashblock {
 			Vec::new(),
 		);
 
-		let executed: ExecutedBlock<OpPrimitives> = ExecutedBlock {
+		let executed = BuiltPayloadExecutedBlock {
 			recovered_block: Arc::new(block),
 			execution_output: Arc::new(execution_outcome),
-			hashed_state: Arc::new(hashed_state),
-			trie_updates: Arc::new(trie_updates),
+			// Keep unsorted; conversion to sorted happens when needed downstream
+			hashed_state: Either::Left(Arc::new(hashed_state)),
+			trie_updates: Either::Left(Arc::new(trie_updates)),
 		};
 
 		Ok(OpBuiltPayload::new(
@@ -534,7 +538,7 @@ impl PublishFlashblock {
 		let bundle_state = executed_block.execution_output.bundle.clone();
 
 		// We always build op built payloads with exactly one block
-		debug_assert_eq!(executed_block.execution_outcome().receipts.len(), 1);
+		debug_assert_eq!(executed_block.execution_output.receipts.len(), 1);
 		let receipts = executed_block
 			.execution_output
 			.receipts

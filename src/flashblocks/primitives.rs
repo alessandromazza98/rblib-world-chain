@@ -1,13 +1,19 @@
 use {
 	alloy_rlp::{
-		Decodable, Encodable, Header as RlpHeader, RlpDecodable, RlpEncodable,
+		Decodable,
+		Encodable,
+		Header as RlpHeader,
+		RlpDecodable,
+		RlpEncodable,
 	},
 	chrono::Utc,
 	eyre::{bail, eyre},
 	rblib::{
 		alloy::{
 			consensus::{
-				Block, BlockHeader, EMPTY_OMMER_ROOT_HASH,
+				Block,
+				BlockHeader,
+				EMPTY_OMMER_ROOT_HASH,
 				proofs::ordered_trie_root_with_encoder,
 			},
 			eips::{Decodable2718, Encodable2718, eip4895, merge::BEACON_NONCE},
@@ -437,6 +443,7 @@ impl TryFrom<Flashblock> for RecoveredBlock<Block<OpTxEnvelope>> {
 			nonce: BEACON_NONCE.into(),
 			requests_hash: None, // TODO: Isthmus
 			excess_blob_gas: Some(0),
+			block_access_list_hash: Some(B256::ZERO), // TODO: change it
 		};
 
 		let transactions_encoded = diff
@@ -452,6 +459,7 @@ impl TryFrom<Flashblock> for RecoveredBlock<Block<OpTxEnvelope>> {
 			transactions: transactions_encoded,
 			withdrawals: Some(eip4895::Withdrawals(diff.withdrawals.to_vec())),
 			ommers: vec![],
+			block_access_list: None, // TODO: change it
 		};
 
 		Block::new(header, body)

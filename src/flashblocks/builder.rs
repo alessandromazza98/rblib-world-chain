@@ -11,10 +11,11 @@ use {
 			consensus::{Block, BlockHeader, Transaction},
 			optimism::consensus::OpTxEnvelope,
 			primitives::U256,
+			signers::Either,
 		},
 		prelude::PayloadBuilderError,
 		reth::{
-			api::{BlockBody, NodePrimitives},
+			api::{BlockBody, BuiltPayloadExecutedBlock, NodePrimitives},
 			core::primitives::SignedTransaction,
 			errors::ProviderError,
 			evm::{
@@ -59,7 +60,6 @@ use {
 		},
 		revm::database::BundleState,
 	},
-	reth_chain_state::ExecutedBlock,
 	std::sync::Arc,
 };
 
@@ -314,13 +314,13 @@ where
 		);
 
 		// create the executed block data
-		let executed = ExecutedBlock {
+		let executed = BuiltPayloadExecutedBlock {
 			recovered_block: Arc::new(block),
 			execution_output: Arc::new(execution_outcome),
-			hashed_state: Arc::new(hashed_state),
-			trie_updates: Arc::new(trie_updates),
+			// Keep unsorted; conversion to sorted happens when needed downstream
+			hashed_state: Either::Left(Arc::new(hashed_state)),
+			trie_updates: Either::Left(Arc::new(trie_updates)),
 		};
-
 		let payload = OpBuiltPayload::new(
 			ctx.payload_id(),
 			sealed_block,
