@@ -801,7 +801,7 @@ fn merge_access_list(
 		return None;
 	};
 	let Some(new_block_access_list) = new_block_access_list else {
-		return None;
+		return Some(block_access_list);
 	};
 	let mut final_block_access_list = block_access_list;
 
