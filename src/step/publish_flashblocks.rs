@@ -393,6 +393,8 @@ impl PublishFlashblock {
 		} else {
 			None
 		};
+		tracing::info!("old block access list: {:?}", block_access_list);
+		tracing::info!("new block access list: {:?}", new_block_access_list);
 		// now merge it to the old one
 		let block_access_list =
 			merge_access_list(block_access_list, new_block_access_list);
