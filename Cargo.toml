@@ -12,9 +12,11 @@ rblib = { path = "../rblib" }
 
 # alloy
 alloy-rlp = { version = "0.3.12", default-features = false }
+alloy-sol-types = { version = "1.5.0", default-features = false }
 
 # alloy-op
-alloy-op-evm = { version = "0.23.0", default-features = false }
+alloy-op-evm = { version = "0.25", default-features = false }
+alloy-evm = { git = "https://github.com/Rimeeeeee/evm", branch = "bal-devnet-1" }
 
 # reth
 reth-optimism-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.9.3" }
@@ -38,3 +40,67 @@ backon = "1.6.0"
 
 [dev-dependencies]
 rblib = { path = "../rblib", features = ["test-utils" ] }
+
+[patch.crates-io]
+op-alloy = { path = "../op-alloy/crates/op-alloy", features = ["full"], optional = true }
+op-alloy-rpc-types-engine = { path = "../op-alloy/crates/rpc-types-engine", default-features = false, optional = true }
+op-alloy-consensus = { path = "../op-alloy/crates/consensus", default-features = false }
+op-alloy-rpc-types = { path = "../op-alloy/crates/rpc-types" }
+op-alloy-network = { path = "../op-alloy/crates/network" }
+op-alloy-provider = { path = "../op-alloy/crates/provider" }
+op-alloy-rpc-jsonrpsee = { path = "../op-alloy/crates/rpc-jsonrpsee" }
+alloy-op-evm = { git = "https://github.com/Rimeeeeee/evm", branch = "bal-devnet-1" }
+
+alloy-consensus = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-contract = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-eips = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-genesis = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-json-rpc = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-network = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-network-primitives = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-provider = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-pubsub = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-client = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-admin = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-anvil = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-beacon = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-debug = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-engine = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-eth = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-mev = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-trace = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-rpc-types-txpool = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-serde = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-signer = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-signer-local = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-transport = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-transport-http = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-transport-ipc = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-transport-ws = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1" }
+alloy-origin = { git = "https://github.com/Soubhik-10/alloy", branch = "bal-devnet-1", package = "alloy", features = [
+    "k256",
+    "rpc-types-mev",
+] }
+
+revm-inspectors = { git = "https://github.com/Rimeeeeee/revm-inspectors", branch = "bal-devnet-1" }
+
+revm = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-bytecode = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-context = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-context-interface = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-database = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-database-interface = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-handler = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-inspector = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-interpreter = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-precompile = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-primitives = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+revm-state = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+op-revm = { git = "https://github.com/bluealloy/revm", rev = "23065598a316aa7a47021e23ac0e29a1f94f82ac" }
+alloy-evm = { git = "https://github.com/Rimeeeeee/evm", branch = "bal-devnet-1" }
+
+[patch."https://github.com/paradigmxyz/reth"]
+reth-optimism-consensus = { git = "https://github.com/Rimeeeeee/reth", rev = "914afe15be44" }
+reth-chain-state = { git = "https://github.com/Rimeeeeee/reth", rev = "914afe15be44" }
+

@@ -16,7 +16,7 @@ use {
 			primitives::BlockHash,
 		},
 		reth::{
-			api::{Events, FullNodeTypes, NodeTypes},
+			api::{BuiltPayloadExecutedBlock, Events, FullNodeTypes, NodeTypes},
 			builder::BuilderContext,
 			optimism::{
 				chainspec::OpChainSpec,
@@ -48,7 +48,6 @@ use {
 			},
 		},
 	},
-	reth_chain_state::ExecutedBlock,
 	std::{sync::Arc, time::Duration},
 	tokio::sync::broadcast,
 };
@@ -66,7 +65,7 @@ pub struct FlashblocksStateExecutor {
 	p2p_handle: FlashblocksHandle,
 	builder_config: OpBuilderConfig,
 	pending_block:
-		tokio::sync::watch::Sender<Option<ExecutedBlock<OpPrimitives>>>,
+		tokio::sync::watch::Sender<Option<BuiltPayloadExecutedBlock<OpPrimitives>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,7 +86,7 @@ impl FlashblocksStateExecutor {
 		p2p_handle: FlashblocksHandle,
 		builder_config: OpBuilderConfig,
 		pending_block: tokio::sync::watch::Sender<
-			Option<ExecutedBlock<OpPrimitives>>,
+			Option<BuiltPayloadExecutedBlock<OpPrimitives>>,
 		>,
 	) -> Self {
 		let inner = Arc::new(RwLock::new(FlashblocksStateExecutorInner {
@@ -169,7 +168,9 @@ impl FlashblocksStateExecutor {
 	/// Returns a receiver for the pending block.
 	pub fn pending_block(
 		&self,
-	) -> tokio::sync::watch::Receiver<Option<ExecutedBlock<OpPrimitives>>> {
+	) -> tokio::sync::watch::Receiver<
+		Option<BuiltPayloadExecutedBlock<OpPrimitives>>,
+	> {
 		self.pending_block.subscribe()
 	}
 
@@ -246,7 +247,7 @@ fn process_flashblock<Provider, Pool>(
 	chain_spec: &Arc<OpChainSpec>,
 	flashblock: FlashblocksPayloadV1,
 	pending_block: tokio::sync::watch::Sender<
-		Option<ExecutedBlock<OpPrimitives>>,
+		Option<BuiltPayloadExecutedBlock<OpPrimitives>>,
 	>,
 ) -> eyre::Result<()>
 where
