@@ -16,7 +16,13 @@ use {
 				EMPTY_OMMER_ROOT_HASH,
 				proofs::ordered_trie_root_with_encoder,
 			},
-			eips::{Decodable2718, Encodable2718, eip4895, merge::BEACON_NONCE},
+			eips::{
+				Decodable2718,
+				Encodable2718,
+				eip4895,
+				eip7928::{BlockAccessList, compute_block_access_list_hash},
+				merge::BEACON_NONCE,
+			},
 			optimism::consensus::OpTxEnvelope,
 			primitives::{Address, B64, B256, Bloom, Bytes, FixedBytes, U256},
 			serde::quantity,
@@ -51,6 +57,7 @@ use {
 	RlpEncodable,
 	RlpDecodable,
 )]
+#[rlp(trailing)]
 pub struct ExecutionPayloadFlashblockDeltaV1 {
 	/// The state root of the block.
 	pub state_root: B256,
@@ -69,6 +76,8 @@ pub struct ExecutionPayloadFlashblockDeltaV1 {
 	pub withdrawals: Vec<Withdrawal>,
 	/// The withdrawals root of the block.
 	pub withdrawals_root: B256,
+	/// EIP-7928: Block-level access list
+	pub block_access_list: Option<BlockAccessList>,
 }
 
 /// Represents the base configuration of an execution payload that remains
@@ -262,6 +271,7 @@ impl Flashblock {
 		index: u64,
 		transactions_offset: usize,
 		withdrawal_offset: usize,
+		block_access_list: Option<BlockAccessList>,
 	) -> Self {
 		let block = payload.block();
 		let fees = payload.fees();
@@ -335,6 +345,7 @@ impl Flashblock {
 					transactions,
 					withdrawals,
 					withdrawals_root: block.withdrawals_root().unwrap_or_default(),
+					block_access_list,
 				},
 				metadata,
 			},
@@ -418,6 +429,14 @@ impl TryFrom<Flashblock> for RecoveredBlock<Block<OpTxEnvelope>> {
 			.base()
 			.ok_or(eyre!("Flashblock is missing base payload"))?;
 		let diff = value.flashblock.diff.clone();
+		let (block_access_list, block_access_list_hash) =
+			if let Some(bal) = diff.block_access_list {
+				let bal_hash = compute_block_access_list_hash(&bal);
+				(Some(bal), Some(bal_hash))
+			} else {
+				(None, None)
+			};
+
 		let header = Header {
 			parent_beacon_block_root: None,
 			state_root: diff.state_root,
@@ -443,7 +462,7 @@ impl TryFrom<Flashblock> for RecoveredBlock<Block<OpTxEnvelope>> {
 			nonce: BEACON_NONCE.into(),
 			requests_hash: None, // TODO: Isthmus
 			excess_blob_gas: Some(0),
-			block_access_list_hash: Some(B256::ZERO), // TODO: change it
+			block_access_list_hash,
 		};
 
 		let transactions_encoded = diff
@@ -459,7 +478,7 @@ impl TryFrom<Flashblock> for RecoveredBlock<Block<OpTxEnvelope>> {
 			transactions: transactions_encoded,
 			withdrawals: Some(eip4895::Withdrawals(diff.withdrawals.to_vec())),
 			ommers: vec![],
-			block_access_list: None, // TODO: change it
+			block_access_list,
 		};
 
 		Block::new(header, body)
@@ -620,6 +639,7 @@ mod tests {
 			transactions: vec![Bytes::from(vec![0xde, 0xad, 0xbe, 0xef])],
 			withdrawals: vec![Withdrawal::default()],
 			withdrawals_root: B256::from([4u8; 32]),
+			block_access_list: None,
 		}
 	}
 

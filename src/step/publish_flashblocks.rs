@@ -35,6 +35,7 @@ use {
 			eips::{
 				Encodable2718,
 				eip7685::EMPTY_REQUESTS_HASH,
+				eip7928::compute_block_access_list_hash,
 				merge::BEACON_NONCE,
 			},
 			optimism::consensus::{OpDepositReceipt, OpTxEnvelope},
@@ -165,6 +166,7 @@ impl Step<WorldChain> for PublishFlashblock {
 			transactions,
 			withdrawals: vec![],
 			withdrawals_root: block.withdrawals_root().unwrap_or_default(),
+			block_access_list: block.body().block_access_list.clone(),
 		};
 		let fees = op_built_payload.fees();
 		let now = Utc::now()
@@ -384,6 +386,15 @@ impl PublishFlashblock {
 		} else {
 			(None, None)
 		};
+		let block_access_list = if let Some(exec_res) = payload.result() {
+			Some(exec_res.alloy_bal.clone())
+		} else {
+			None
+		};
+		let block_access_list_hash = block_access_list
+			.as_ref()
+			.map(|bal| compute_block_access_list_hash(bal));
+
 		let hashed_state = ctx.provider().hashed_post_state(&bundle_state);
 		let (state_root, trie_updates) = ctx
 			.provider()
@@ -420,7 +431,7 @@ impl PublishFlashblock {
 			blob_gas_used,
 			excess_blob_gas,
 			requests_hash,
-			block_access_list_hash: Some(B256::ZERO), // TODO: change it
+			block_access_list_hash,
 		};
 
 		let (transactions, senders) =
@@ -429,7 +440,7 @@ impl PublishFlashblock {
 			transactions,
 			ommers: Default::default(),
 			withdrawals: Some(Withdrawals::default()), // empty withdrawals
-			block_access_list: None,                   // TODO: change it
+			block_access_list,
 		});
 		let block = RecoveredBlock::new_unhashed(block, senders);
 		let sealed_block = Arc::new(block.sealed_block().clone());
