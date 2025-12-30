@@ -35,7 +35,7 @@ use {
 			eips::{
 				Encodable2718,
 				eip7685::EMPTY_REQUESTS_HASH,
-				eip7928::compute_block_access_list_hash,
+				eip7928::{BlockAccessList, compute_block_access_list_hash},
 				merge::BEACON_NONCE,
 			},
 			optimism::consensus::{OpDepositReceipt, OpTxEnvelope},
@@ -292,6 +292,7 @@ impl PublishFlashblock {
 			mut receipts,
 			mut total_fees,
 			mut cumulative_gas_used,
+			block_access_list,
 		) = self.extract_previous_state(payload)?;
 
 		let base_fee = payload.block().base_fee();
@@ -386,11 +387,16 @@ impl PublishFlashblock {
 		} else {
 			(None, None)
 		};
-		let block_access_list = if let Some(exec_res) = payload.result() {
+		// get new block access list from payload's execution result
+		let new_block_access_list = if let Some(exec_res) = payload.result() {
 			Some(exec_res.alloy_bal.clone())
 		} else {
 			None
 		};
+		// now merge it to the old one
+		let block_access_list =
+			merge_access_list(block_access_list, new_block_access_list);
+		// and finally compute its hash
 		let block_access_list_hash = block_access_list
 			.as_ref()
 			.map(|bal| compute_block_access_list_hash(bal));
@@ -529,16 +535,37 @@ impl PublishFlashblock {
 	fn extract_previous_state(
 		&self,
 		payload: &Checkpoint<WorldChain>,
-	) -> Result<(BundleState, Vec<OpReceipt>, U256, u64), BlockExecutionError> {
+	) -> Result<
+		(
+			BundleState,
+			Vec<OpReceipt>,
+			U256,
+			u64,
+			Option<BlockAccessList>,
+		),
+		BlockExecutionError,
+	> {
 		// Check if we have a previous barrier with a built payload
 		let Some(barrier) = payload.latest_barrier() else {
 			// First flashblock for this payload id - start with base bundle state
-			return Ok((payload.block().base_bundle_state(), vec![], U256::ZERO, 0));
+			return Ok((
+				payload.block().base_bundle_state(),
+				vec![],
+				U256::ZERO,
+				0,
+				Some(BlockAccessList::default()),
+			));
 		};
 
 		let Some(op_built_payload) = &barrier.context().maybe_built_payload else {
 			// Barrier exists but no built payload - start fresh
-			return Ok((payload.block().base_bundle_state(), vec![], U256::ZERO, 0));
+			return Ok((
+				payload.block().base_bundle_state(),
+				vec![],
+				U256::ZERO,
+				0,
+				Some(BlockAccessList::default()),
+			));
 		};
 
 		// Extract state from the previous built payload
@@ -560,7 +587,9 @@ impl PublishFlashblock {
 		let total_fees = op_built_payload.fees();
 		let cumulative_gas_used = op_built_payload.block().gas_used();
 
-		Ok((bundle_state, receipts, total_fees, cumulative_gas_used))
+		let bal = op_built_payload.block().body().block_access_list.clone();
+
+		Ok((bundle_state, receipts, total_fees, cumulative_gas_used, bal))
 	}
 
 	/// Returns a span that covers all payload checkpoints since the last barrier.
@@ -762,4 +791,44 @@ pub(crate) fn flatten_reverts(reverts: &Reverts) -> Reverts {
 	// Transform the map into a vec
 	let flattened = per_account.into_iter().collect();
 	Reverts::new(vec![flattened])
+}
+
+fn merge_access_list(
+	block_access_list: Option<BlockAccessList>,
+	new_block_access_list: Option<BlockAccessList>,
+) -> Option<BlockAccessList> {
+	let Some(block_access_list) = block_access_list else {
+		return None;
+	};
+	let Some(new_block_access_list) = new_block_access_list else {
+		return None;
+	};
+	let mut final_block_access_list = block_access_list;
+
+	for new_acc_changes in new_block_access_list {
+		let maybe_old_acc_changes = final_block_access_list
+			.iter_mut()
+			.find(|acc_change| acc_change.address == new_acc_changes.address);
+		if let Some(old_acc_changes) = maybe_old_acc_changes {
+			old_acc_changes
+				.storage_changes
+				.extend(new_acc_changes.storage_changes);
+			old_acc_changes
+				.storage_reads
+				.extend(new_acc_changes.storage_reads);
+			old_acc_changes
+				.balance_changes
+				.extend(new_acc_changes.balance_changes);
+			old_acc_changes
+				.nonce_changes
+				.extend(new_acc_changes.nonce_changes);
+			old_acc_changes
+				.code_changes
+				.extend(new_acc_changes.code_changes);
+		} else {
+			final_block_access_list.push(new_acc_changes);
+		}
+	}
+
+	Some(final_block_access_list)
 }
