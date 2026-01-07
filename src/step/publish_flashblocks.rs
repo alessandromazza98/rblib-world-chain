@@ -388,20 +388,15 @@ impl PublishFlashblock {
 			(None, None)
 		};
 		// get new block access list from payload's execution result
-		let new_block_access_list = if let Some(exec_res) = payload.result() {
-			Some(exec_res.alloy_bal.clone())
-		} else {
-			None
-		};
+		let new_block_access_list = Some(payload.alloy_bal());
 		tracing::info!("old block access list: {:?}", block_access_list);
 		tracing::info!("new block access list: {:?}", new_block_access_list);
-		// now merge it to the old one
-		let block_access_list =
-			merge_access_list(block_access_list, new_block_access_list);
+		let block_access_list = new_block_access_list;
 		// and finally compute its hash
 		let block_access_list_hash = block_access_list
 			.as_ref()
 			.map(|bal| compute_block_access_list_hash(bal));
+		tracing::info!("bal hash: {:?}", block_access_list_hash);
 
 		let hashed_state = ctx.provider().hashed_post_state(&bundle_state);
 		let (state_root, trie_updates) = ctx

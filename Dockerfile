@@ -24,6 +24,7 @@ WORKDIR /work
 #   docker buildx build -t world-chain:latest -f rblib-world-chain/Dockerfile .
 COPY rblib-world-chain ./rblib-world-chain
 COPY rblib ./rblib
+COPY op-alloy ./op-alloy
 
 WORKDIR /work/rblib-world-chain
 RUN cargo chef prepare --recipe-path /work/recipe.json
@@ -37,8 +38,9 @@ ARG TARGETARCH
 COPY --from=planner /work/recipe.json /work/recipe.json
 
 # `cargo-chef cook` must be able to resolve local path dependencies.
-# The recipe references `rblib` at `/work/rblib`, so copy it in before cooking.
+# The recipe references `rblib` and `op-alloy` at `/work/`, so copy them in before cooking.
 COPY --from=planner /work/rblib /work/rblib
+COPY --from=planner /work/op-alloy /work/op-alloy
 
 # BuildKit cache mounts with platform-specific IDs to prevent cross-arch contamination.
 RUN --mount=type=cache,id=cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry \
@@ -50,6 +52,7 @@ RUN --mount=type=cache,id=cargo-registry-${TARGETARCH},target=/usr/local/cargo/r
 WORKDIR /work
 COPY rblib-world-chain ./rblib-world-chain
 COPY rblib ./rblib
+COPY op-alloy ./op-alloy
 
 WORKDIR /work/rblib-world-chain
 RUN --mount=type=cache,id=cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry \
