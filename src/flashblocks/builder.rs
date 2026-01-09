@@ -184,46 +184,61 @@ where
 
 		let mut transactions_offset = 0;
 		// 1. Prepare the db
-		let (mut bundle, mut receipts, mut transactions, gas_used, mut fees) =
-			if let Some(payload) = &committed_payload {
-				// if we have a best payload we will always have a bundle
-				let execution_result = &payload
-					.executed_block()
-					.ok_or(PayloadBuilderError::MissingPayload)?
-					.execution_output;
+		let (
+			mut bundle,
+			mut receipts,
+			mut transactions,
+			gas_used,
+			mut fees,
+			previous_bal,
+		) = if let Some(payload) = &committed_payload {
+			// if we have a best payload we will always have a bundle
+			let execution_result = &payload
+				.executed_block()
+				.ok_or(PayloadBuilderError::MissingPayload)?
+				.execution_output;
 
-				let receipts = execution_result
-					.receipts
-					.iter()
-					.flatten()
-					.cloned()
-					.collect();
+			let receipts = execution_result
+				.receipts
+				.iter()
+				.flatten()
+				.cloned()
+				.collect();
 
-				transactions_offset = (payload.block().transaction_count() + 1) as u64;
-				let transactions = payload
-					.block()
-					.body()
-					.transactions_iter()
-					.cloned()
-					.map(|tx| {
-						tx.try_into_recovered().map_err(|_| {
-							PayloadBuilderError::Other(eyre!("tx recovery failed").into())
-						})
+			transactions_offset = (payload.block().transaction_count() + 1) as u64;
+			let transactions = payload
+				.block()
+				.body()
+				.transactions_iter()
+				.cloned()
+				.map(|tx| {
+					tx.try_into_recovered().map_err(|_| {
+						PayloadBuilderError::Other(eyre!("tx recovery failed").into())
 					})
-					.collect::<Result<Vec<_>, _>>()?;
+				})
+				.collect::<Result<Vec<_>, _>>()?;
+			let previous_bal = payload.block().body().block_access_list.clone();
 
-				tracing::trace!(target: "flashblocks::payload_builder", "using best payload");
+			tracing::trace!(target: "flashblocks::payload_builder", "using best payload");
 
-				(
-					execution_result.bundle.clone(),
-					receipts,
-					transactions,
-					Some(payload.block().gas_used()),
-					payload.fees(),
-				)
-			} else {
-				(BundleState::default(), vec![], vec![], None, U256::ZERO)
-			};
+			(
+				execution_result.bundle.clone(),
+				receipts,
+				transactions,
+				Some(payload.block().gas_used()),
+				payload.fees(),
+				previous_bal,
+			)
+		} else {
+			(
+				BundleState::default(),
+				vec![],
+				vec![],
+				None,
+				U256::ZERO,
+				Some(vec![]),
+			)
+		};
 
 		let _gas_limit = ctx
 			.attributes()
@@ -236,6 +251,18 @@ where
 			.with_bundle_prestate(bundle.clone())
 			.with_bundle_update()
 			.build();
+		// if there is a previous block access list, then use it to initialize the
+		// bal_builder
+		let mut bal_builder = Bal::default();
+		if let Some(previous_bal) = previous_bal {
+			let mut bal_vec = vec![];
+			for alloy_acc in previous_bal {
+				let (addr, acc_bal) = AccountBal::try_from_alloy(alloy_acc)
+					.expect("it should not fail here");
+				bal_vec.push((addr, acc_bal));
+			}
+			bal_builder = Bal::from_iter(bal_vec);
+		}
 		// if there is the block access list, then use it to parallelize transaction
 		// execution
 		if let Some(bal) = bal {
@@ -246,10 +273,7 @@ where
 				bal_vec.push((addr, acc_bal));
 			}
 			let bal = Bal::from_iter(bal_vec);
-			// TODO: bal_builder needs to account for potential committed state that
-			// has already started created a block access list with previous
-			// flashblocks
-			state.bal_state.bal_builder = Some(Bal::default());
+			state.bal_state.bal_builder = Some(bal_builder);
 			state.bal_state.bal = Some(Arc::new(bal));
 			state.bal_state.bal_index = transactions_offset;
 		}
