@@ -186,6 +186,10 @@ impl Step<WorldChain> for PublishFlashblock {
 			},
 		};
 
+		tracing::info!(
+			"publishing flashblock with block hash: {}",
+			flashblock.diff().block_hash
+		);
 		// Push the contents of the payload
 		if let Err(e) = self
 			.p2p
@@ -326,7 +330,7 @@ impl PublishFlashblock {
 					total_fees += U256::from(miner_fee) * U256::from(gas_used);
 				}
 
-				let receipt = self.build_receipt(
+				let receipt = build_receipt(
 					tx,
 					result,
 					cumulative_gas_used,
@@ -468,60 +472,6 @@ impl PublishFlashblock {
 			U256::from(total_fees),
 			Some(executed),
 		))
-	}
-
-	/// Builds an OpReceipt from a transaction execution result.
-	///
-	/// Handles the different receipt types based on transaction type (deposit vs
-	/// regular). For deposit transactions, includes deposit-specific fields like
-	/// nonce and version.
-	fn build_receipt(
-		&self,
-		tx: &Recovered<OpTxEnvelope>,
-		result: ExecutionResult<OpHaltReason>,
-		cumulative_gas_used: u64,
-		checkpoint: &Checkpoint<WorldChain>,
-		ctx: &StepContext<WorldChain>,
-		chain_spec: &impl OpHardforks,
-		timestamp: u64,
-	) -> Result<OpReceipt, BlockExecutionError> {
-		let receipt = Receipt {
-			status: Eip658Value::Eip658(result.is_success()),
-			cumulative_gas_used,
-			logs: result.into_logs(),
-		};
-
-		match tx.tx_type() {
-			OpTxType::Deposit => {
-				// For deposits, we need to look up the sender's nonce from state
-				let deposit_nonce = match checkpoint.prev() {
-					Some(prev_checkpoint) => prev_checkpoint
-						.basic_ref(tx.signer())
-						.map_err(BlockExecutionError::other)?
-						.map(|account| account.nonce),
-					None => ctx
-						.provider()
-						.account_nonce(tx.signer_ref())
-						.map_err(BlockExecutionError::other)?,
-				};
-
-				// The deposit receipt version was introduced in Canyon to indicate
-				// an update to how receipt hashes should be computed.
-				let deposit_receipt_version = chain_spec
-					.is_canyon_active_at_timestamp(timestamp)
-					.then_some(1);
-
-				Ok(OpReceipt::Deposit(OpDepositReceipt {
-					inner: receipt,
-					deposit_nonce,
-					deposit_receipt_version,
-				}))
-			}
-			OpTxType::Legacy => Ok(OpReceipt::Legacy(receipt)),
-			OpTxType::Eip2930 => Ok(OpReceipt::Eip2930(receipt)),
-			OpTxType::Eip1559 => Ok(OpReceipt::Eip1559(receipt)),
-			OpTxType::Eip7702 => Ok(OpReceipt::Eip7702(receipt)),
-		}
 	}
 
 	/// Extracts the previous execution state from the latest barrier checkpoint.
@@ -753,7 +703,7 @@ impl Times {
 ///   revert.
 /// - For each account+slot, keep the **earliest** `RevertToSlot`.
 /// - For each account, OR `wipe_storage`.
-pub(crate) fn flatten_reverts(reverts: &Reverts) -> Reverts {
+pub fn flatten_reverts(reverts: &Reverts) -> Reverts {
 	let mut per_account = HashMap::new();
 
 	for (addr, acc_revert) in reverts.iter().flatten() {
@@ -828,4 +778,57 @@ fn merge_access_list(
 	}
 
 	Some(final_block_access_list)
+}
+
+/// Builds an OpReceipt from a transaction execution result.
+///
+/// Handles the different receipt types based on transaction type (deposit vs
+/// regular). For deposit transactions, includes deposit-specific fields like
+/// nonce and version.
+pub fn build_receipt(
+	tx: &Recovered<OpTxEnvelope>,
+	result: ExecutionResult<OpHaltReason>,
+	cumulative_gas_used: u64,
+	checkpoint: &Checkpoint<WorldChain>,
+	ctx: &StepContext<WorldChain>,
+	chain_spec: &impl OpHardforks,
+	timestamp: u64,
+) -> Result<OpReceipt, BlockExecutionError> {
+	let receipt = Receipt {
+		status: Eip658Value::Eip658(result.is_success()),
+		cumulative_gas_used,
+		logs: result.into_logs(),
+	};
+
+	match tx.tx_type() {
+		OpTxType::Deposit => {
+			// For deposits, we need to look up the sender's nonce from state
+			let deposit_nonce = match checkpoint.prev() {
+				Some(prev_checkpoint) => prev_checkpoint
+					.basic_ref(tx.signer())
+					.map_err(BlockExecutionError::other)?
+					.map(|account| account.nonce),
+				None => ctx
+					.provider()
+					.account_nonce(tx.signer_ref())
+					.map_err(BlockExecutionError::other)?,
+			};
+
+			// The deposit receipt version was introduced in Canyon to indicate
+			// an update to how receipt hashes should be computed.
+			let deposit_receipt_version = chain_spec
+				.is_canyon_active_at_timestamp(timestamp)
+				.then_some(1);
+
+			Ok(OpReceipt::Deposit(OpDepositReceipt {
+				inner: receipt,
+				deposit_nonce,
+				deposit_receipt_version,
+			}))
+		}
+		OpTxType::Legacy => Ok(OpReceipt::Legacy(receipt)),
+		OpTxType::Eip2930 => Ok(OpReceipt::Eip2930(receipt)),
+		OpTxType::Eip1559 => Ok(OpReceipt::Eip1559(receipt)),
+		OpTxType::Eip7702 => Ok(OpReceipt::Eip7702(receipt)),
+	}
 }

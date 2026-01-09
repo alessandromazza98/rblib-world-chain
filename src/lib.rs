@@ -15,5 +15,9 @@ pub use {
 	node::FlashblocksNode,
 	payload::WorldChainServiceBuilder,
 	platform::WorldChain,
-	step::publish_flashblocks::PublishFlashblock,
+	step::publish_flashblocks::{
+		PublishFlashblock,
+		build_receipt,
+		flatten_reverts,
+	},
 };

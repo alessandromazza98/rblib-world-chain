@@ -50,7 +50,7 @@ use {
 /// A Block Executor for Optimism that can load pre state from previous
 /// flashblocks.
 pub struct FlashblocksBlockExecutor<Evm, R: OpReceiptBuilder, Spec> {
-	inner: OpBlockExecutor<Evm, R, Spec>,
+	pub inner: OpBlockExecutor<Evm, R, Spec>,
 }
 
 impl<'db, DB, E, R, Spec> FlashblocksBlockExecutor<E, R, Spec>

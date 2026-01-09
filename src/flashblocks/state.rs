@@ -18,9 +18,10 @@ use {
 		reth::{
 			api::{BuiltPayloadExecutedBlock, Events, FullNodeTypes, NodeTypes},
 			builder::BuilderContext,
+			evm::ConfigureEvm,
 			optimism::{
 				chainspec::OpChainSpec,
-				evm::OpEvmConfig,
+				evm::{OpEvmConfig, OpNextBlockEnvAttributes},
 				node::{
 					OpBuiltPayload,
 					OpEngineTypes,
@@ -339,6 +340,16 @@ where
 		.call()?;
 
 	let state_provider = provider.state_by_block_hash(base.parent_hash)?;
+	let next_block_context = OpNextBlockEnvAttributes {
+		timestamp: base.timestamp,
+		suggested_fee_recipient: base.fee_recipient,
+		prev_randao: base.prev_randao,
+		gas_limit: base.gas_limit,
+		parent_beacon_block_root: Some(base.parent_beacon_block_root),
+		extra_data: base.extra_data.clone(),
+	};
+	let evm_env =
+		evm_config.next_evm_env(sealed_header.header(), &next_block_context)?;
 
 	let config = PayloadConfig::new(Arc::new(sealed_header), attributes);
 	let builder_ctx = payload_builder_ctx_builder.build(
@@ -364,6 +375,9 @@ where
 		&state_provider,
 		&builder_ctx,
 		latest_payload.as_ref().map(|p| p.0.clone()),
+		diff.block_access_list.clone(),
+		evm_env,
+		base.extra_data.clone(),
 	)?;
 
 	let payload = match outcome {
