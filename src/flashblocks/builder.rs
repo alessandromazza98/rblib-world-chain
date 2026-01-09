@@ -269,15 +269,27 @@ where
 			transactions_offset += 1;
 		}
 		let bal_state_cloned = state.bal_state.clone();
-		let transactions_indexed: Vec<(u64, Recovered<OpTxEnvelope>)> =
-			transactions
+		let attributes_txs: Vec<Recovered<OpTxEnvelope>> = ctx
+			.attributes()
+			.transactions
+			.clone()
+			.into_iter()
+			.map(|tx| {
+				tx.1.try_into_recovered().map_err(|err| {
+					PayloadBuilderError::Other(
+						eyre!("tx recovery failed for {:?}", err).into(),
+					)
+				})
+			})
+			.collect::<Result<Vec<_>, _>>()?;
+		let attributes_txsx_indexed: Vec<(u64, Recovered<OpTxEnvelope>)> =
+			attributes_txs
 				.clone()
 				.into_iter()
 				.enumerate()
 				.map(|(idx, tx)| (idx as u64 + transactions_offset, tx))
 				.collect();
-		let mut info = ExecutionInfo::default();
-		let mut parallel_results = transactions_indexed
+		let mut parallel_results = attributes_txsx_indexed
 			.into_par_iter()
 			.map(|(idx, tx)| {
 				let mut state_paral = State::builder()
@@ -325,9 +337,10 @@ where
 			bundle.extend(parallel_result.bundle_state);
 			let gas_used_by_tx = parallel_result.exec_result.gas_used();
 			cumulative_gas_used += gas_used_by_tx;
-			let deposit_nonce = if parallel_result.tx.is_deposit() {
+			let mut deposit_nonce = None;
+			if parallel_result.tx.is_deposit() {
 				state.set_bal_index(parallel_result.index);
-				state
+				deposit_nonce = state
 					.basic(parallel_result.tx.signer())
 					.map_err(ProviderError::other)?
 					.map(|account| account.nonce)
@@ -337,7 +350,6 @@ where
 					.effective_tip_per_gas(evm_env.block_env.basefee)
 					.expect("fee is always valid; execution succeeded");
 				fees += U256::from(miner_fee) * U256::from(gas_used_by_tx);
-				None
 			};
 			let receipt = build_receipt(
 				&parallel_result.tx,
@@ -349,17 +361,6 @@ where
 			)?;
 			receipts.push(receipt);
 		}
-		let attributes_txs: Vec<Recovered<OpTxEnvelope>> = ctx
-			.attributes()
-			.transactions
-			.clone()
-			.into_iter()
-			.map(|tx| {
-				tx.1.try_into_recovered().map_err(|_| {
-					PayloadBuilderError::Other(eyre!("tx recovery failed").into())
-				})
-			})
-			.collect::<Result<Vec<_>, _>>()?;
 		transactions.extend(attributes_txs);
 		let transactions_root = proofs::calculate_transaction_root(&transactions);
 		let receipts_root = calculate_receipt_root_no_memo_optimism(
