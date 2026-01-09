@@ -1,4 +1,5 @@
 use {
+	alloy_evm::block::StateDB,
 	alloy_op_evm::{
 		OpBlockExecutionCtx,
 		OpBlockExecutor,
@@ -36,6 +37,7 @@ use {
 			},
 			provider::BlockExecutionResult,
 			revm::{
+				DatabaseCommit,
 				Inspector,
 				State,
 				context::result::{ExecutionResult, ResultAndState},
@@ -48,14 +50,14 @@ use {
 /// A Block Executor for Optimism that can load pre state from previous
 /// flashblocks.
 pub struct FlashblocksBlockExecutor<Evm, R: OpReceiptBuilder, Spec> {
-	inner: OpBlockExecutor<Evm, R, Spec>,
+	pub inner: OpBlockExecutor<Evm, R, Spec>,
 }
 
 impl<'db, DB, E, R, Spec> FlashblocksBlockExecutor<E, R, Spec>
 where
-	DB: Database + 'db,
+	DB: StateDB + Database + DatabaseCommit + 'db,
 	E: Evm<
-			DB = &'db mut State<DB>,
+			DB = DB,
 			Tx: FromRecoveredTx<R::Transaction>
 			      + FromTxWithEncoded<R::Transaction>
 			      + OpTxEnv,
@@ -81,7 +83,7 @@ where
 	///
 	/// This should be used _only_ when initializing the executor
 	pub fn with_bundle_prestate(mut self, pre_state: BundleState) -> Self {
-		self.evm_mut().db_mut().bundle_state.extend(pre_state);
+		self.evm_mut().db_mut().bundle_state_mut().extend(pre_state);
 		self
 	}
 
@@ -100,9 +102,9 @@ where
 
 impl<'db, DB, E, R, Spec> BlockExecutor for FlashblocksBlockExecutor<E, R, Spec>
 where
-	DB: Database + 'db,
+	DB: StateDB + Database + DatabaseCommit + 'db,
 	E: Evm<
-			DB = &'db mut State<DB>,
+			DB = DB,
 			Tx: FromRecoveredTx<R::Transaction>
 			      + FromTxWithEncoded<R::Transaction>
 			      + OpTxEnv,
@@ -220,12 +222,12 @@ impl BlockExecutorFactory for FlashblocksBlockExecutorFactory {
 
 	fn create_executor<'a, DB, I>(
 		&'a self,
-		evm: <OpEvmFactory as EvmFactory>::Evm<&'a mut State<DB>, I>,
+		evm: <OpEvmFactory as EvmFactory>::Evm<DB, I>,
 		ctx: Self::ExecutionCtx<'a>,
 	) -> impl BlockExecutorFor<'a, Self, DB, I>
 	where
-		DB: Database + 'a,
-		I: Inspector<<OpEvmFactory as EvmFactory>::Context<&'a mut State<DB>>> + 'a,
+		DB: StateDB + Database + DatabaseCommit + 'a,
+		I: Inspector<<OpEvmFactory as EvmFactory>::Context<DB>> + 'a,
 	{
 		if let Some(pre_state) = &self.pre_state {
 			return FlashblocksBlockExecutor::new(

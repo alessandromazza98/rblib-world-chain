@@ -35,10 +35,12 @@ use {
 			eips::{
 				Encodable2718,
 				eip7685::EMPTY_REQUESTS_HASH,
+				eip7928::{BlockAccessList, compute_block_access_list_hash},
 				merge::BEACON_NONCE,
 			},
 			optimism::consensus::{OpDepositReceipt, OpTxEnvelope},
-			primitives::U256,
+			primitives::{B256, U256},
+			signers::Either,
 		},
 		prelude::{
 			BlockExt,
@@ -58,12 +60,13 @@ use {
 			types,
 		},
 		reth::{
+			api::BuiltPayloadExecutedBlock,
 			errors::BlockExecutionError,
 			evm::op_revm::OpHaltReason,
 			optimism::{
 				forks::OpHardforks,
 				node::OpBuiltPayload,
-				primitives::{OpPrimitives, OpReceipt, OpTxType},
+				primitives::{OpReceipt, OpTxType},
 			},
 			payload::{BuiltPayload, PayloadBuilderAttributes},
 			primitives::{Header, Recovered, RecoveredBlock, logs_bloom},
@@ -76,7 +79,6 @@ use {
 			states::reverts::{AccountInfoRevert, Reverts},
 		},
 	},
-	reth_chain_state::ExecutedBlock,
 	reth_optimism_consensus::{calculate_receipt_root_no_memo_optimism, isthmus},
 	std::{
 		collections::{HashMap, hash_map::Entry},
@@ -164,6 +166,7 @@ impl Step<WorldChain> for PublishFlashblock {
 			transactions,
 			withdrawals: vec![],
 			withdrawals_root: block.withdrawals_root().unwrap_or_default(),
+			block_access_list: block.body().block_access_list.clone(),
 		};
 		let fees = op_built_payload.fees();
 		let now = Utc::now()
@@ -183,6 +186,10 @@ impl Step<WorldChain> for PublishFlashblock {
 			},
 		};
 
+		tracing::info!(
+			"publishing flashblock with block hash: {}",
+			flashblock.diff().block_hash
+		);
 		// Push the contents of the payload
 		if let Err(e) = self
 			.p2p
@@ -289,6 +296,7 @@ impl PublishFlashblock {
 			mut receipts,
 			mut total_fees,
 			mut cumulative_gas_used,
+			block_access_list,
 		) = self.extract_previous_state(payload)?;
 
 		let base_fee = payload.block().base_fee();
@@ -322,7 +330,7 @@ impl PublishFlashblock {
 					total_fees += U256::from(miner_fee) * U256::from(gas_used);
 				}
 
-				let receipt = self.build_receipt(
+				let receipt = build_receipt(
 					tx,
 					result,
 					cumulative_gas_used,
@@ -383,6 +391,17 @@ impl PublishFlashblock {
 		} else {
 			(None, None)
 		};
+		// get new block access list from payload's execution result
+		let new_block_access_list = Some(payload.alloy_bal());
+		tracing::info!("old block access list: {:?}", block_access_list);
+		tracing::info!("new block access list: {:?}", new_block_access_list);
+		let block_access_list = new_block_access_list;
+		// and finally compute its hash
+		let block_access_list_hash = block_access_list
+			.as_ref()
+			.map(|bal| compute_block_access_list_hash(bal));
+		tracing::info!("bal hash: {:?}", block_access_list_hash);
+
 		let hashed_state = ctx.provider().hashed_post_state(&bundle_state);
 		let (state_root, trie_updates) = ctx
 			.provider()
@@ -419,6 +438,7 @@ impl PublishFlashblock {
 			blob_gas_used,
 			excess_blob_gas,
 			requests_hash,
+			block_access_list_hash,
 		};
 
 		let (transactions, senders) =
@@ -427,6 +447,7 @@ impl PublishFlashblock {
 			transactions,
 			ommers: Default::default(),
 			withdrawals: Some(Withdrawals::default()), // empty withdrawals
+			block_access_list,
 		});
 		let block = RecoveredBlock::new_unhashed(block, senders);
 		let sealed_block = Arc::new(block.sealed_block().clone());
@@ -437,11 +458,12 @@ impl PublishFlashblock {
 			Vec::new(),
 		);
 
-		let executed: ExecutedBlock<OpPrimitives> = ExecutedBlock {
+		let executed = BuiltPayloadExecutedBlock {
 			recovered_block: Arc::new(block),
 			execution_output: Arc::new(execution_outcome),
-			hashed_state: Arc::new(hashed_state),
-			trie_updates: Arc::new(trie_updates),
+			// Keep unsorted; conversion to sorted happens when needed downstream
+			hashed_state: Either::Left(Arc::new(hashed_state)),
+			trie_updates: Either::Left(Arc::new(trie_updates)),
 		};
 
 		Ok(OpBuiltPayload::new(
@@ -452,60 +474,6 @@ impl PublishFlashblock {
 		))
 	}
 
-	/// Builds an OpReceipt from a transaction execution result.
-	///
-	/// Handles the different receipt types based on transaction type (deposit vs
-	/// regular). For deposit transactions, includes deposit-specific fields like
-	/// nonce and version.
-	fn build_receipt(
-		&self,
-		tx: &Recovered<OpTxEnvelope>,
-		result: ExecutionResult<OpHaltReason>,
-		cumulative_gas_used: u64,
-		checkpoint: &Checkpoint<WorldChain>,
-		ctx: &StepContext<WorldChain>,
-		chain_spec: &impl OpHardforks,
-		timestamp: u64,
-	) -> Result<OpReceipt, BlockExecutionError> {
-		let receipt = Receipt {
-			status: Eip658Value::Eip658(result.is_success()),
-			cumulative_gas_used,
-			logs: result.into_logs(),
-		};
-
-		match tx.tx_type() {
-			OpTxType::Deposit => {
-				// For deposits, we need to look up the sender's nonce from state
-				let deposit_nonce = match checkpoint.prev() {
-					Some(prev_checkpoint) => prev_checkpoint
-						.basic_ref(tx.signer())
-						.map_err(BlockExecutionError::other)?
-						.map(|account| account.nonce),
-					None => ctx
-						.provider()
-						.account_nonce(tx.signer_ref())
-						.map_err(BlockExecutionError::other)?,
-				};
-
-				// The deposit receipt version was introduced in Canyon to indicate
-				// an update to how receipt hashes should be computed.
-				let deposit_receipt_version = chain_spec
-					.is_canyon_active_at_timestamp(timestamp)
-					.then_some(1);
-
-				Ok(OpReceipt::Deposit(OpDepositReceipt {
-					inner: receipt,
-					deposit_nonce,
-					deposit_receipt_version,
-				}))
-			}
-			OpTxType::Legacy => Ok(OpReceipt::Legacy(receipt)),
-			OpTxType::Eip2930 => Ok(OpReceipt::Eip2930(receipt)),
-			OpTxType::Eip1559 => Ok(OpReceipt::Eip1559(receipt)),
-			OpTxType::Eip7702 => Ok(OpReceipt::Eip7702(receipt)),
-		}
-	}
-
 	/// Extracts the previous execution state from the latest barrier checkpoint.
 	///
 	/// Returns a tuple of (bundle_state, receipts, total_fees,
@@ -514,16 +482,37 @@ impl PublishFlashblock {
 	fn extract_previous_state(
 		&self,
 		payload: &Checkpoint<WorldChain>,
-	) -> Result<(BundleState, Vec<OpReceipt>, U256, u64), BlockExecutionError> {
+	) -> Result<
+		(
+			BundleState,
+			Vec<OpReceipt>,
+			U256,
+			u64,
+			Option<BlockAccessList>,
+		),
+		BlockExecutionError,
+	> {
 		// Check if we have a previous barrier with a built payload
 		let Some(barrier) = payload.latest_barrier() else {
 			// First flashblock for this payload id - start with base bundle state
-			return Ok((payload.block().base_bundle_state(), vec![], U256::ZERO, 0));
+			return Ok((
+				payload.block().base_bundle_state(),
+				vec![],
+				U256::ZERO,
+				0,
+				Some(BlockAccessList::default()),
+			));
 		};
 
 		let Some(op_built_payload) = &barrier.context().maybe_built_payload else {
 			// Barrier exists but no built payload - start fresh
-			return Ok((payload.block().base_bundle_state(), vec![], U256::ZERO, 0));
+			return Ok((
+				payload.block().base_bundle_state(),
+				vec![],
+				U256::ZERO,
+				0,
+				Some(BlockAccessList::default()),
+			));
 		};
 
 		// Extract state from the previous built payload
@@ -534,7 +523,7 @@ impl PublishFlashblock {
 		let bundle_state = executed_block.execution_output.bundle.clone();
 
 		// We always build op built payloads with exactly one block
-		debug_assert_eq!(executed_block.execution_outcome().receipts.len(), 1);
+		debug_assert_eq!(executed_block.execution_output.receipts.len(), 1);
 		let receipts = executed_block
 			.execution_output
 			.receipts
@@ -545,7 +534,9 @@ impl PublishFlashblock {
 		let total_fees = op_built_payload.fees();
 		let cumulative_gas_used = op_built_payload.block().gas_used();
 
-		Ok((bundle_state, receipts, total_fees, cumulative_gas_used))
+		let bal = op_built_payload.block().body().block_access_list.clone();
+
+		Ok((bundle_state, receipts, total_fees, cumulative_gas_used, bal))
 	}
 
 	/// Returns a span that covers all payload checkpoints since the last barrier.
@@ -712,7 +703,7 @@ impl Times {
 ///   revert.
 /// - For each account+slot, keep the **earliest** `RevertToSlot`.
 /// - For each account, OR `wipe_storage`.
-pub(crate) fn flatten_reverts(reverts: &Reverts) -> Reverts {
+pub fn flatten_reverts(reverts: &Reverts) -> Reverts {
 	let mut per_account = HashMap::new();
 
 	for (addr, acc_revert) in reverts.iter().flatten() {
@@ -747,4 +738,97 @@ pub(crate) fn flatten_reverts(reverts: &Reverts) -> Reverts {
 	// Transform the map into a vec
 	let flattened = per_account.into_iter().collect();
 	Reverts::new(vec![flattened])
+}
+
+fn merge_access_list(
+	block_access_list: Option<BlockAccessList>,
+	new_block_access_list: Option<BlockAccessList>,
+) -> Option<BlockAccessList> {
+	let Some(block_access_list) = block_access_list else {
+		return None;
+	};
+	let Some(new_block_access_list) = new_block_access_list else {
+		return Some(block_access_list);
+	};
+	let mut final_block_access_list = block_access_list;
+
+	for new_acc_changes in new_block_access_list {
+		let maybe_old_acc_changes = final_block_access_list
+			.iter_mut()
+			.find(|acc_change| acc_change.address == new_acc_changes.address);
+		if let Some(old_acc_changes) = maybe_old_acc_changes {
+			old_acc_changes
+				.storage_changes
+				.extend(new_acc_changes.storage_changes);
+			old_acc_changes
+				.storage_reads
+				.extend(new_acc_changes.storage_reads);
+			old_acc_changes
+				.balance_changes
+				.extend(new_acc_changes.balance_changes);
+			old_acc_changes
+				.nonce_changes
+				.extend(new_acc_changes.nonce_changes);
+			old_acc_changes
+				.code_changes
+				.extend(new_acc_changes.code_changes);
+		} else {
+			final_block_access_list.push(new_acc_changes);
+		}
+	}
+
+	Some(final_block_access_list)
+}
+
+/// Builds an OpReceipt from a transaction execution result.
+///
+/// Handles the different receipt types based on transaction type (deposit vs
+/// regular). For deposit transactions, includes deposit-specific fields like
+/// nonce and version.
+pub fn build_receipt(
+	tx: &Recovered<OpTxEnvelope>,
+	result: ExecutionResult<OpHaltReason>,
+	cumulative_gas_used: u64,
+	checkpoint: &Checkpoint<WorldChain>,
+	ctx: &StepContext<WorldChain>,
+	chain_spec: &impl OpHardforks,
+	timestamp: u64,
+) -> Result<OpReceipt, BlockExecutionError> {
+	let receipt = Receipt {
+		status: Eip658Value::Eip658(result.is_success()),
+		cumulative_gas_used,
+		logs: result.into_logs(),
+	};
+
+	match tx.tx_type() {
+		OpTxType::Deposit => {
+			// For deposits, we need to look up the sender's nonce from state
+			let deposit_nonce = match checkpoint.prev() {
+				Some(prev_checkpoint) => prev_checkpoint
+					.basic_ref(tx.signer())
+					.map_err(BlockExecutionError::other)?
+					.map(|account| account.nonce),
+				None => ctx
+					.provider()
+					.account_nonce(tx.signer_ref())
+					.map_err(BlockExecutionError::other)?,
+			};
+
+			// The deposit receipt version was introduced in Canyon to indicate
+			// an update to how receipt hashes should be computed.
+			let deposit_receipt_version = chain_spec
+				.is_canyon_active_at_timestamp(timestamp)
+				.then_some(1);
+
+			Ok(OpReceipt::Deposit(OpDepositReceipt {
+				inner: receipt,
+				deposit_nonce,
+				deposit_receipt_version,
+			}))
+		}
+		OpTxType::Legacy => Ok(OpReceipt::Legacy(receipt)),
+		OpTxType::Eip2930 => Ok(OpReceipt::Eip2930(receipt)),
+		OpTxType::Eip1559 => Ok(OpReceipt::Eip1559(receipt)),
+		OpTxType::Eip7702 => Ok(OpReceipt::Eip7702(receipt)),
+	}
 }

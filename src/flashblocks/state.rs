@@ -16,11 +16,12 @@ use {
 			primitives::BlockHash,
 		},
 		reth::{
-			api::{Events, FullNodeTypes, NodeTypes},
+			api::{BuiltPayloadExecutedBlock, Events, FullNodeTypes, NodeTypes},
 			builder::BuilderContext,
+			evm::ConfigureEvm,
 			optimism::{
 				chainspec::OpChainSpec,
-				evm::OpEvmConfig,
+				evm::{OpEvmConfig, OpNextBlockEnvAttributes},
 				node::{
 					OpBuiltPayload,
 					OpEngineTypes,
@@ -48,7 +49,6 @@ use {
 			},
 		},
 	},
-	reth_chain_state::ExecutedBlock,
 	std::{sync::Arc, time::Duration},
 	tokio::sync::broadcast,
 };
@@ -66,7 +66,7 @@ pub struct FlashblocksStateExecutor {
 	p2p_handle: FlashblocksHandle,
 	builder_config: OpBuilderConfig,
 	pending_block:
-		tokio::sync::watch::Sender<Option<ExecutedBlock<OpPrimitives>>>,
+		tokio::sync::watch::Sender<Option<BuiltPayloadExecutedBlock<OpPrimitives>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,7 +87,7 @@ impl FlashblocksStateExecutor {
 		p2p_handle: FlashblocksHandle,
 		builder_config: OpBuilderConfig,
 		pending_block: tokio::sync::watch::Sender<
-			Option<ExecutedBlock<OpPrimitives>>,
+			Option<BuiltPayloadExecutedBlock<OpPrimitives>>,
 		>,
 	) -> Self {
 		let inner = Arc::new(RwLock::new(FlashblocksStateExecutorInner {
@@ -169,7 +169,9 @@ impl FlashblocksStateExecutor {
 	/// Returns a receiver for the pending block.
 	pub fn pending_block(
 		&self,
-	) -> tokio::sync::watch::Receiver<Option<ExecutedBlock<OpPrimitives>>> {
+	) -> tokio::sync::watch::Receiver<
+		Option<BuiltPayloadExecutedBlock<OpPrimitives>>,
+	> {
 		self.pending_block.subscribe()
 	}
 
@@ -246,7 +248,7 @@ fn process_flashblock<Provider, Pool>(
 	chain_spec: &Arc<OpChainSpec>,
 	flashblock: FlashblocksPayloadV1,
 	pending_block: tokio::sync::watch::Sender<
-		Option<ExecutedBlock<OpPrimitives>>,
+		Option<BuiltPayloadExecutedBlock<OpPrimitives>>,
 	>,
 ) -> eyre::Result<()>
 where
@@ -338,6 +340,16 @@ where
 		.call()?;
 
 	let state_provider = provider.state_by_block_hash(base.parent_hash)?;
+	let next_block_context = OpNextBlockEnvAttributes {
+		timestamp: base.timestamp,
+		suggested_fee_recipient: base.fee_recipient,
+		prev_randao: base.prev_randao,
+		gas_limit: base.gas_limit,
+		parent_beacon_block_root: Some(base.parent_beacon_block_root),
+		extra_data: base.extra_data.clone(),
+	};
+	let evm_env =
+		evm_config.next_evm_env(sealed_header.header(), &next_block_context)?;
 
 	let config = PayloadConfig::new(Arc::new(sealed_header), attributes);
 	let builder_ctx = payload_builder_ctx_builder.build(
@@ -363,6 +375,9 @@ where
 		&state_provider,
 		&builder_ctx,
 		latest_payload.as_ref().map(|p| p.0.clone()),
+		diff.block_access_list.clone(),
+		evm_env,
+		base.extra_data.clone(),
 	)?;
 
 	let payload = match outcome {
