@@ -172,7 +172,6 @@ where
 			Transaction: PoolTransaction<Consensus = OpTxEnvelope> + OpPooledTx,
 		>,
 	{
-		let Self { best } = self;
 		let span = tracing::span!(
 				tracing::Level::INFO,
 				"flashblock_builder",
@@ -185,7 +184,7 @@ where
 
 		let mut transactions_offset = 0;
 		// 1. Prepare the db
-		let (mut bundle, mut receipts, mut transactions, mut gas_used, mut fees) =
+		let (mut bundle, mut receipts, mut transactions, gas_used, mut fees) =
 			if let Some(payload) = &committed_payload {
 				// if we have a best payload we will always have a bundle
 				let execution_result = &payload
