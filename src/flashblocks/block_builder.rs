@@ -39,9 +39,9 @@ use {
 				context::{BlockEnv, result::ExecutionResult},
 			},
 		},
-		revm::database::states::{bundle_state::BundleRetention, reverts::Reverts},
+		revm::database::states::bundle_state::BundleRetention,
 	},
-	std::{collections::HashSet, sync::Arc},
+	std::{borrow::Cow, sync::Arc},
 };
 
 /// A wrapper around the [`BasicBlockBuilder`] for flashblocks.
@@ -165,7 +165,7 @@ where
 			self.inner.parent,
 			transactions,
 			&result,
-			&db.bundle_state,
+			Cow::Borrowed(&db.bundle_state),
 			&state,
 			state_root,
 		))?;
